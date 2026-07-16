@@ -30,13 +30,13 @@ public class App {
 
     // ==================== 【在此處填寫你的自訂變數】 ====================
     private static final String UUID_VAL = env("UUID", "faacf142-dee8-48c2-8558-641123eb939c");
-    private static final int PORT = envInt("PORT", 23849);
+    private static final int PORT = envInt("PORT", 3000);
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "VcNmAA8ErRWXY9lEpl");
-    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "latvi.mingfei1982.eu.org");
-    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiMGYxNTA1MzUwOTRjNDhlZjNmM2ZjZTA2M2E4N2M1N2YiLCJ0IjoiMmQ1NmIzMDctOGE2My00MWI2LWEwM2UtYzJjMDIyNDg0MDI2IiwicyI6IlpXVmlOamt6WW1FdFpUUXpOeTAwT1dKaUxXRTNZakV0WldKaU1tRXlOekU0TWpndyJ9");
-    private static final String WSPORT = env("WSPORT", "28099");
+    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "latvi.mingfei.de5.net");
+    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiOTMwOTI0YTUtM2RmYi00MDVmLWJkNTctZTIzMWRlY2RiY2Y1IiwicyI6Ik1tTmhaVGRsWVdNdE5EazBZeTAwTkRaa0xUaGpPR1F0T0dRNU1UQXdOakJqWkdFMCJ9");
+    private static final String WSPORT = env("WSPORT", "8001");
     private static final String TOKEN = env("TOKEN", "babama123");
     private static final String OPERA = env("OPERA", "0");
     private static final String IPS = env("IPS", "4");
