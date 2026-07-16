@@ -25,7 +25,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 public class App {
-    // 允许重定向，以支持 GitHub -> AWS S3 存储的重定向流程
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .followRedirects(HttpClient.Redirect.ALWAYS)
@@ -47,16 +46,17 @@ public class App {
     private static final String COUNTRY = env("COUNTRY", "AM");
     // ====================================================================
 
-    private static final Path ROOT = Path.of("").toAbsolutePath();
     private static final Path RUNTIME_DIR = Path.of("/tmp").toAbsolutePath().normalize();
     private static final Path NEZHA_CONFIG_PATH = RUNTIME_DIR.resolve("nezha.yaml");
     private static final String ARCH = detectArch();
 
+    // 用于管理拉起的后台子进程
+    private static final List<Process> EXTERNAL_PROCESSES = new ArrayList<>();
+
     public static void main(String[] args) throws Exception {
-        // 参数校验
         validateParams();
 
-        // 1) 启动简易 HTTP 服务器防止容器由于 PORT 未监听到而判定崩溃
+        // 1) 启动 HTTP 保活，防止容器崩溃
         startKeepAliveServer(PORT);
 
         // 2) 启动核心逻辑
@@ -85,11 +85,10 @@ public class App {
         Files.createDirectories(RUNTIME_DIR);
         cleanupOldFiles();
 
-        // 动态检测端口
         int echPort = isValidPort(WSPORT) ? Integer.parseInt(WSPORT) : getFreePort();
         int operaPort = getFreePort();
 
-        // 核心修正：下载 URL 移除末尾多余的 .so 后缀（使其请求 ech-tunnel-linux-amd64，但本地保存为 ech.so）
+        // 下载核心组件（区分 .so 动态库 与 可执行程序）
         String baseUrl = "https://github.com/webappstars/ech-hug/releases/download/3.0"; 
         Path echLib = downloadLibrary(baseUrl + "/ech-tunnel-linux-" + ARCH, "ech.so");
         
@@ -99,33 +98,41 @@ public class App {
             operaLib = downloadLibrary(opUrl, "opera.so");
         }
 
-        Path cloudflaredLib = downloadLibrary("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-" + ARCH, "cf.so");
+        // cloudflared 属于可执行程序
+        Path cloudflaredExe = downloadLibrary("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-" + ARCH, "cf-tunnel");
 
-        Path nezhaLib = null;
+        // 哪吒客户端属于可执行程序
+        Path nezhaExe = null;
         if (!NEZHA_SERVER.isEmpty() && !NEZHA_KEY.isEmpty()) {
             String nzUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ARCH + "agent";
-            nezhaLib = downloadLibrary(nzUrl, "agent.so");
+            nezhaExe = downloadLibrary(nzUrl, "nezha-agent");
         }
 
-        List<NativeService> services = new ArrayList<>();
+        List<NativeService> nativeServices = new ArrayList<>();
 
-        // 1) 哪吒探针启动
-        if (nezhaLib != null) {
+        // 1) 启动哪吒探针 (Process 方式)
+        if (nezhaExe != null) {
+            List<String> cmd = new ArrayList<>();
+            cmd.add(nezhaExe.toString());
             if (!NEZHA_PORT.isEmpty()) {
-                services.add(new NativeService("nezha-agent", nezhaLib, "StartNezhaAgent", "StopNezhaAgent", nezhaV0Payload()));
+                cmd.addAll(List.of("-s", NEZHA_SERVER + ":" + NEZHA_PORT, "-p", NEZHA_KEY, "--disable-auto-update", "--report-delay", "1", "--skip-conn", "--skip-procs"));
+                if (List.of("443", "8443", "2096", "2087", "2083", "2053").contains(NEZHA_PORT)) {
+                    cmd.add("--tls");
+                }
             } else {
                 generateNezhaConfig();
-                services.add(new NativeService("nezha-agent-config", nezhaLib, "StartNezhaAgent", "StopNezhaAgent", nezhaPayload()));
+                cmd.addAll(List.of("-c", NEZHA_CONFIG_PATH.toString()));
             }
+            startExternalProcess("Nezha Agent", cmd);
         }
 
-        // 2) Opera 启动
+        // 2) 启动 Opera 代理
         if (operaLib != null) {
             String opPayload = toJson(mapOf("args", listOf("-country", COUNTRY.toUpperCase(), "-socks-mode", "-bind-address", "127.0.0.1:" + operaPort)));
-            services.add(new NativeService("opera-proxy", operaLib, "StartOpera", "StopOpera", opPayload));
+            nativeServices.add(new NativeService("opera-proxy", operaLib, "StartOpera", "StopOpera", opPayload));
         }
 
-        // 3) ECH Server 启动
+        // 3) 启动 ECH 代理
         if (echLib != null) {
             List<Object> args = new ArrayList<>(listOf("-l", "ws://0.0.0.0:" + echPort));
             if (!TOKEN.isEmpty()) {
@@ -137,32 +144,35 @@ public class App {
                 args.add("socks5://127.0.0.1:" + operaPort);
             }
             String echPayload = toJson(mapOf("args", args));
-            services.add(new NativeService("ech-server", echLib, "StartEch", "StopEch", echPayload));
+            nativeServices.add(new NativeService("ech-server", echLib, "StartEch", "StopEch", echPayload));
         }
 
-        // 4) Cloudflared 隧道启动
-        if (cloudflaredLib != null) {
-            String cfPayload;
+        // 4) 启动 Cloudflared (Process 方式)
+        if (cloudflaredExe != null) {
+            List<String> cmd = new ArrayList<>();
+            cmd.add(cloudflaredExe.toString());
+            cmd.addAll(List.of("--edge-ip-version", IPS, "--protocol", "http2"));
             if (!ARGO_TOKEN.isEmpty()) {
-                // 固定隧道模式
-                cfPayload = toJson(mapOf("args", listOf("--edge-ip-version", IPS, "--protocol", "http2", "tunnel", "run", "--token", ARGO_TOKEN)));
+                cmd.addAll(List.of("tunnel", "run", "--token", ARGO_TOKEN));
             } else {
-                // 临时隧道模式
                 int metricsPort = getFreePort();
-                cfPayload = toJson(mapOf("args", listOf("--edge-ip-version", IPS, "--protocol", "http2", "tunnel", "--url", "127.0.0.1:" + echPort, "--metrics", "0.0.0.0:" + metricsPort)));
+                cmd.addAll(List.of("tunnel", "--url", "127.0.0.1:" + echPort, "--metrics", "0.0.0.0:" + metricsPort));
             }
-            services.add(new NativeService("cloudflared", cloudflaredLib, "StartCloudflared", "StopCloudflared", cfPayload));
+            startExternalProcess("Cloudflared", cmd);
         }
 
-        // 注册关闭钩子清理进程
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> stopAll(services), "shutdown-hook"));
+        // 注册关闭钩子清理 Native 线程与子进程
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            stopAllNative(nativeServices);
+            stopAllExternal();
+        }, "shutdown-hook"));
 
-        // 逐一在后台拉起
-        for (NativeService service : services) {
+        // 逐一拉起 Native JNA 线程
+        for (NativeService service : nativeServices) {
             service.start();
         }
 
-        // 启动 3 分钟自动无痕清理任务 (180秒)
+        // 3 分钟后（180秒）自动无痕清理文件并清屏
         Thread cleanupThread = new Thread(() -> {
             sleep(180000);
             cleanupFiles();
@@ -171,16 +181,51 @@ public class App {
         cleanupThread.setDaemon(true);
         cleanupThread.start();
 
-        // 阻塞主线程以保持 Java 虚拟机常驻
+        // 阻塞主线程以保持服务常驻
         new CountDownLatch(1).await();
     }
 
-    private static void stopAll(List<NativeService> services) {
-        System.out.println("\nStopping all services...");
+    private static void startExternalProcess(String name, List<String> command) {
+        Thread thread = new Thread(() -> {
+            try {
+                ProcessBuilder pb = new ProcessBuilder(command);
+                // 抛弃输出流，防止缓冲区堵塞导致挂起，同时保持控制台整洁
+                pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+                pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+                Process process = pb.start();
+                synchronized (EXTERNAL_PROCESSES) {
+                    EXTERNAL_PROCESSES.add(process);
+                }
+                int exitCode = process.waitFor();
+                System.out.println(name + " exited with code " + exitCode);
+            } catch (Exception e) {
+                System.err.println("Failed to start external process " + name + ": " + e.getMessage());
+            }
+        }, name + "-launcher");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private static void stopAllNative(List<NativeService> services) {
+        System.out.println("\nStopping all native services...");
         for (int i = services.size() - 1; i >= 0; i--) {
             try {
                 services.get(i).stop();
             } catch (Exception ignored) {}
+        }
+    }
+
+    private static void stopAllExternal() {
+        System.out.println("Stopping all external processes...");
+        synchronized (EXTERNAL_PROCESSES) {
+            for (Process p : EXTERNAL_PROCESSES) {
+                try {
+                    if (p.isAlive()) {
+                        p.destroyForcibly();
+                    }
+                } catch (Exception ignored) {}
+            }
+            EXTERNAL_PROCESSES.clear();
         }
     }
 
@@ -265,7 +310,6 @@ public class App {
         Path tmp = RUNTIME_DIR.resolve(fileName + ".download");
         System.out.println("Downloading " + url + " -> " + target);
 
-        // 核心修正：添加标准的浏览器 User-Agent 请求头，避免被 GitHub 的 CDN 防火墙防火墙拦截为 404/403
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMinutes(3))
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -281,18 +325,6 @@ public class App {
         Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
         target.toFile().setExecutable(true, false);
         return target;
-    }
-
-    private static String nezhaPayload() {
-        return toJson(mapOf("config", NEZHA_CONFIG_PATH.toString()));
-    }
-
-    private static String nezhaV0Payload() {
-        List<Object> args = new ArrayList<>(listOf("-s", NEZHA_SERVER + ":" + NEZHA_PORT, "-p", NEZHA_KEY, "--disable-auto-update", "--report-delay", "1", "--skip-conn", "--skip-procs"));
-        if (List.of("443", "8443", "2096", "2087", "2083", "2053").contains(NEZHA_PORT)) {
-            args.add("--tls");
-        }
-        return toJson(mapOf("args", args));
     }
 
     private static void generateNezhaConfig() throws IOException {
@@ -321,7 +353,7 @@ public class App {
     }
 
     private static void cleanupOldFiles() {
-        for (String file : List.of("ech.so", "opera.so", "cf.so", "agent.so", "nezha.yaml")) {
+        for (String file : List.of("ech.so", "opera.so", "cf-tunnel", "nezha-agent", "nezha.yaml")) {
             try { Files.deleteIfExists(RUNTIME_DIR.resolve(file)); } catch (IOException ignored) {}
         }
     }
