@@ -36,7 +36,7 @@ public class App {
     private static final String NEZHA_KEY = env("NEZHA_KEY", "VcNmAA8ErRWXY9lEpl");
     private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "latvi.mingfei1982.eu.org");
     private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiMGYxNTA1MzUwOTRjNDhlZjNmM2ZjZTA2M2E4N2M1N2YiLCJ0IjoiMmQ1NmIzMDctOGE2My00MWI2LWEwM2UtYzJjMDIyNDg0MDI2IiwicyI6IlpXVmlOamt6WW1FdFpUUXpOeTAwT1dKaUxXRTNZakV0WldKaU1tRXlOekU0TWpndyJ9");
-    private static final String WSPORT = env("WSPORT", "8001");
+    private static final String WSPORT = env("WSPORT", "28099");
     private static final String TOKEN = env("TOKEN", "babama123");
     private static final String OPERA = env("OPERA", "0");
     private static final String IPS = env("IPS", "4");
