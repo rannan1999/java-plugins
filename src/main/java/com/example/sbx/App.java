@@ -30,7 +30,7 @@ public class App {
 
     // ==================== 【在此處填寫你的自訂變數】 ====================
     private static final String UUID_VAL = env("UUID", "faacf142-dee8-48c2-8558-641123eb939c");
-    private static final int PORT = envInt("PORT", 3000);
+    private static final int PORT = envInt("PORT", 23849);
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "VcNmAA8ErRWXY9lEpl");
