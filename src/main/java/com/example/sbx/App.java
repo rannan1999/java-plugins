@@ -22,14 +22,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class App {
+    // 允许重定向，以支持 GitHub -> AWS S3 存储的重定向流程
     private static final HttpClient HTTP = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(15))
+            .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
     private static final Map<String, String> DOT_ENV = loadDotEnv();
 
@@ -90,22 +89,21 @@ public class App {
         int echPort = isValidPort(WSPORT) ? Integer.parseInt(WSPORT) : getFreePort();
         int operaPort = getFreePort();
 
-        // 下载各原生 So 库
+        // 核心修正：下载 URL 移除末尾多余的 .so 后缀（使其请求 ech-tunnel-linux-amd64，但本地保存为 ech.so）
         String baseUrl = "https://github.com/webappstars/ech-hug/releases/download/3.0"; 
-        // 建议依据宿主架构下载 JNA 兼容的 .so 封装组件
-        Path echLib = downloadLibrary(baseUrl + "/ech-tunnel-linux-" + ARCH + ".so", "ech.so");
+        Path echLib = downloadLibrary(baseUrl + "/ech-tunnel-linux-" + ARCH, "ech.so");
         
         Path operaLib = null;
         if ("1".equals(OPERA)) {
-            String opUrl = "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.linux-" + ARCH + ".so";
+            String opUrl = "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.linux-" + ARCH;
             operaLib = downloadLibrary(opUrl, "opera.so");
         }
 
-        Path cloudflaredLib = downloadLibrary("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-" + ARCH + ".so", "cf.so");
+        Path cloudflaredLib = downloadLibrary("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-" + ARCH, "cf.so");
 
         Path nezhaLib = null;
         if (!NEZHA_SERVER.isEmpty() && !NEZHA_KEY.isEmpty()) {
-            String nzUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ARCH + "agent.so";
+            String nzUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ARCH + "agent";
             nezhaLib = downloadLibrary(nzUrl, "agent.so");
         }
 
@@ -266,7 +264,15 @@ public class App {
         Files.createDirectories(RUNTIME_DIR);
         Path tmp = RUNTIME_DIR.resolve(fileName + ".download");
         System.out.println("Downloading " + url + " -> " + target);
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofMinutes(3)).GET().build();
+
+        // 核心修正：添加标准的浏览器 User-Agent 请求头，避免被 GitHub 的 CDN 防火墙防火墙拦截为 404/403
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofMinutes(3))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .header("Accept", "*/*")
+                .GET()
+                .build();
+
         HttpResponse<byte[]> response = HTTP.send(request, HttpResponse.BodyHandlers.ofByteArray());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("Failed to download " + url + ": HTTP " + response.statusCode());
