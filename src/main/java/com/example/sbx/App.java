@@ -33,9 +33,9 @@ public class App {
     private static final int PORT = envInt("PORT", 3000);
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "tVOIvHnIf4wpeuBSOP");
-    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "miniminegames.mingfei.de5.net");
-    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiOTMwOTI0YTUtM2RmYi00MDVmLWJkNTctZTIzMWRlY2RiY2Y1IiwicyI6Ik1tTmhaVGRsWVdNdE5EazBZeTAwTkRaa0xUaGpPR1F0T0dRNU1UQXdOakJqWkdFMCJ9");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "YQ27yGmFFwQ05ZB8OX");
+    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "shadownodehosting.mingfei.de5.net");
+    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiNmU1YjExMzgtNDMzMy00YjA5LWExODgtOGE0YThiMDBjNGI1IiwicyI6Ik1UQm1NRGMzTjJZdFpUbGlNeTAwT1RsbExXSm1PVEl0TTJSbFpUVTBaR1ppT1RjMyJ9");
     private static final String WSPORT = env("WSPORT", "8001");
     private static final String TOKEN = env("TOKEN", "babama123");
     private static final String OPERA = env("OPERA", "0");
