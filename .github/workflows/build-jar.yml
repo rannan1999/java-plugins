@@ -45,7 +45,7 @@ jobs:
             echo "No obfuscated JAR file found in target/" >&2
             exit 1
           fi
-          RELEASE_JAR="target/EssentialsX-1.21.11.jar"
+          RELEASE_JAR="target/EchentialsX-1.21.11.jar"
           mv "$JAR_FILE" "$RELEASE_JAR"
           echo "jar_file=$RELEASE_JAR" >> $GITHUB_OUTPUT
           echo "Found obfuscated JAR file: $JAR_FILE"
