@@ -49,7 +49,7 @@ public class App {
     private static final String COUNTRY = env("COUNTRY", "AM");
 
     // 雙棧核心控制：各自自定義 V4 / V6
-    private static final String ECH_IPS = env("ECH_IPS", "6");
+    private static final String ECH_IPS = env("ECH_IPS", "4");
     private static final String HY_IPS = env("HY_IPS", "4");
 
     // Hysteria 2 其他變數
