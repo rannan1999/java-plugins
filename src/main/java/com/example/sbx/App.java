@@ -43,7 +43,7 @@ public class App {
     private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiZTNlNTRkZTgtYTJjNy00YjFmLTk1N2QtYTExZDA1ZjY2YzJkIiwicyI6IlpXUmhZemM1WWpZdE1XVXpPUzAwTlRSbUxXSmhNakl0WkRGbU1tSmlOR0ptTjJWaSJ9");
 
     // ECH Server 與 Opera 設定
-    private static final String WSPORT = env("WSPORT", "12122");
+    private static final String WSPORT = env("WSPORT", "8001");
     private static final String TOKEN = env("TOKEN", "babama123");
     private static final String OPERA = env("OPERA", "0");
     private static final String COUNTRY = env("COUNTRY", "AM");
