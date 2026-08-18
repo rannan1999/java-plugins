@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,49 +32,63 @@ public class App {
     // ==================== 【在此處填寫你的自訂變數】 ====================
     private static final String UUID_VAL = env("UUID", "faacf142-dee8-48c2-8558-641123eb939c");
     private static final int PORT = envInt("PORT", 3000);
+
+    // 哪吒探針設定
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "IqAc0EBKNec6Oy46kE");
-    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "alienxservers.mingfei.de5.net");
+
+    // Cloudflare Argo 隧道設定
+    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "laternodes.mingfei.de5.net");
     private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiNmU1YjExMzgtNDMzMy00YjA5LWExODgtOGE0YThiMDBjNGI1IiwicyI6Ik1UQm1NRGMzTjJZdFpUbGlNeTAwT1RsbExXSm1PVEl0TTJSbFpUVTBaR1ppT1RjMyJ9");
+
+    // ECH Server 與 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
     private static final String TOKEN = env("TOKEN", "babama123");
     private static final String OPERA = env("OPERA", "0");
-    private static final String IPS = env("IPS", "4");
     private static final String COUNTRY = env("COUNTRY", "AM");
+
+    // 雙棧核心控制：各自自定義 V4 / V6
+    private static final String ECH_IPS = env("ECH_IPS", "6");
+    private static final String HY_IPS = env("HY_IPS", "4");
+
+    // Hysteria 2 其他變數
+    private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
+    private static final String HY_PORT = env("HY_PORT", "37137");
+    private static final String NAME = env("NAME", "MJJ");
+    private static final String PASSWORD = UUID_VAL;
     // ====================================================================
 
     private static final Path RUNTIME_DIR = Path.of("/tmp").toAbsolutePath().normalize();
     private static final Path NEZHA_CONFIG_PATH = RUNTIME_DIR.resolve("nezha.yaml");
+    private static final Path HY2_CONFIG_PATH = RUNTIME_DIR.resolve("hy_config.json");
+    private static final Path SERVER_KEY_PATH = RUNTIME_DIR.resolve("server.key");
+    private static final Path SERVER_CRT_PATH = RUNTIME_DIR.resolve("server.crt");
+    private static final Path SUB_TXT_PATH = RUNTIME_DIR.resolve("sub.txt");
+    private static final Path SUB_BASE64_PATH = RUNTIME_DIR.resolve("sub_base64.txt");
+
     private static final String ARCH = detectArch();
 
-    // 用于管理拉起的后台子进程
+    // 用於管理拉起的背景子進程
     private static final List<Process> EXTERNAL_PROCESSES = new ArrayList<>();
 
     public static void main(String[] args) throws Exception {
         validateParams();
 
-        // 1) 启动 HTTP 保活，防止容器崩溃
+        // 1) 啟動 HTTP 保活，防止翼手龍等容器崩潰
         startKeepAliveServer(PORT);
 
-        // 2) 启动核心逻辑
+        // 2) 啟動核心邏輯
         startServices();
     }
 
     private static void validateParams() {
-        String countryUpper = COUNTRY.toUpperCase();
-        if ("1".equals(OPERA)) {
-            if (!List.of("AM", "AS", "EU").contains(countryUpper)) {
-                System.err.println("Error: Invalid COUNTRY for OPERA=1");
-                System.exit(1);
-            }
-        } else if (!"0".equals(OPERA)) {
-            System.err.println("Error: OPERA must be 0 or 1");
+        if (!"4".equals(ECH_IPS) && !"6".equals(ECH_IPS)) {
+            System.err.println("Error: ECH_IPS must be 4 or 6");
             System.exit(1);
         }
-
-        if (!"4".equals(IPS) && !"6".equals(IPS)) {
-            System.err.println("Error: IPS must be 4 or 6");
+        if (!"4".equals(HY_IPS) && !"6".equals(HY_IPS)) {
+            System.err.println("Error: HY_IPS must be 4 or 6");
             System.exit(1);
         }
     }
@@ -85,34 +100,39 @@ public class App {
         int echPort = isValidPort(WSPORT) ? Integer.parseInt(WSPORT) : getFreePort();
         int operaPort = getFreePort();
 
-        // 下载核心组件（全部作为独立可执行程序处理）
-        String baseUrl = "https://github.com/webappstars/ech-hug/releases/download/3.0"; 
-        Path echLib = downloadLibrary(baseUrl + "/ech-tunnel-linux-" + ARCH, "ech.so");
-        
-        Path operaLib = null;
-        if ("1".equals(OPERA)) {
-            String opUrl = "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.linux-" + ARCH;
-            // 将其下载并保存为独立可执行程序后缀
-            operaLib = downloadLibrary(opUrl, "opera-proxy");
-        }
+        // 動態下載路徑配置
+        String echUrl = "https://github.com/webappstars/ech-hug/releases/download/3.0/ech-tunnel-linux-" + ARCH;
+        String operaUrl = "arm64".equals(ARCH)
+                ? "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.freebsd-arm64"
+                : "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.linux-amd64";
+        String cloudflaredUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-" + ARCH;
+        String nezhaUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ARCH + "agent";
+        String hy2Url = "https://github.com/apernet/hysteria/releases/download/app%2Fv2.6.5/hysteria-linux-" + ARCH;
 
-        // cloudflared 属于可执行程序
-        Path cloudflaredExe = downloadLibrary("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-" + ARCH, "cf-tunnel");
+        // 下載組件
+        Path echExe = downloadLibrary(echUrl, "ech-server-linux");
+        Path operaExe = downloadLibrary(operaUrl, "opera-linux");
+        Path cloudflaredExe = downloadLibrary(cloudflaredUrl, "cloudflared-linux");
 
-        // 哪吒客户端属于可执行程序
         Path nezhaExe = null;
         if (!NEZHA_SERVER.isEmpty() && !NEZHA_KEY.isEmpty()) {
-            String nzUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ARCH + "agent";
-            nezhaExe = downloadLibrary(nzUrl, "nezha-agent");
+            nezhaExe = downloadLibrary(nezhaUrl, "iccagent");
         }
 
-        // 1) 启动哪吒探针 (Process 方式)
+        Path hy2Exe = null;
+        if ("1".equals(ENABLE_HY2)) {
+            hy2Exe = downloadLibrary(hy2Url, "icchy");
+        }
+
+        // 1) 啟動哪吒探針
         if (nezhaExe != null) {
             List<String> cmd = new ArrayList<>();
             cmd.add(nezhaExe.toString());
+            List<String> tlsPorts = List.of("443", "8443", "2096", "2087", "2083", "2053");
+
             if (!NEZHA_PORT.isEmpty()) {
-                cmd.addAll(List.of("-s", NEZHA_SERVER + ":" + NEZHA_PORT, "-p", NEZHA_KEY, "--disable-auto-update", "--report-delay", "1", "--skip-conn", "--skip-procs"));
-                if (List.of("443", "8443", "2096", "2087", "2083", "2053").contains(NEZHA_PORT)) {
+                cmd.addAll(List.of("-s", NEZHA_SERVER + ":" + NEZHA_PORT, "-p", NEZHA_KEY));
+                if (tlsPorts.contains(NEZHA_PORT)) {
                     cmd.add("--tls");
                 }
             } else {
@@ -122,35 +142,68 @@ public class App {
             startExternalProcess("Nezha Agent", cmd);
         }
 
-        // 2) 启动 Opera 代理 (改为 Process 方式启动)
-        if (operaLib != null) {
+        // 2) 啟動 Opera Proxy
+        if ("1".equals(OPERA) && operaExe != null) {
             List<String> cmd = new ArrayList<>();
-            cmd.add(operaLib.toString());
+            cmd.add(operaExe.toString());
             cmd.addAll(List.of("-country", COUNTRY.toUpperCase(), "-socks-mode", "-bind-address", "127.0.0.1:" + operaPort));
             startExternalProcess("Opera Proxy", cmd);
         }
 
-        // 3) 启动 ECH 代理 (彻底移除 JNA，改用标准的 Process 独立进程启动)
-        if (echLib != null) {
+        // 3) 啟動 ECH Server
+        if (echExe != null) {
             List<String> cmd = new ArrayList<>();
-            cmd.add(echLib.toString());
+            cmd.add(echExe.toString());
             cmd.addAll(List.of("-l", "ws://0.0.0.0:" + echPort));
             if (!TOKEN.isEmpty()) {
-                cmd.add("-token");
-                cmd.add(TOKEN);
+                cmd.addAll(List.of("-token", TOKEN));
             }
             if ("1".equals(OPERA)) {
-                cmd.add("-f");
-                cmd.add("socks5://127.0.0.1:" + operaPort);
+                cmd.addAll(List.of("-f", "socks5://127.0.0.1:" + operaPort));
             }
             startExternalProcess("ECH Server", cmd);
         }
 
-        // 4) 启动 Cloudflared (Process 方式)
+        // 4) 啟動 Hysteria 2 與生成訂閱
+        if ("1".equals(ENABLE_HY2) && hy2Exe != null) {
+            generateCertificates();
+            generateHy2Config();
+
+            List<String> cmd = List.of(hy2Exe.toString(), "server", "-c", HY2_CONFIG_PATH.toString());
+            startExternalProcess("Hysteria 2", cmd);
+
+            // 背景生成 HY2 訂閱資訊
+            Thread subThread = new Thread(() -> {
+                sleep(15000);
+                generateHy2Subscription();
+            }, "hy2-sub-builder");
+            subThread.setDaemon(true);
+            subThread.start();
+        }
+
+        // 註冊關閉鉤子清理所有子進程
+        Runtime.getRuntime().addShutdownHook(new Thread(App::stopAllExternal, "shutdown-hook"));
+
+        // 3 分鐘後（180秒）自動無痕清理文件並清屏
+        Thread cleanupThread = new Thread(() -> {
+            sleep(180000);
+            cleanupFiles();
+            clearConsole();
+        }, "delayed-cleanup");
+        cleanupThread.setDaemon(true);
+        cleanupThread.start();
+
+        // 5) 啟動 Cloudflared 隧道 (主線程阻塞或保持執行)
         if (cloudflaredExe != null) {
+            // 先嘗試更新
+            try {
+                new ProcessBuilder(cloudflaredExe.toString(), "update").redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().waitFor();
+            } catch (Exception ignored) {}
+
             List<String> cmd = new ArrayList<>();
             cmd.add(cloudflaredExe.toString());
-            cmd.addAll(List.of("--edge-ip-version", IPS, "--protocol", "http2"));
+            cmd.addAll(List.of("--edge-ip-version", ECH_IPS, "--protocol", "http2"));
+
             if (!ARGO_TOKEN.isEmpty()) {
                 cmd.addAll(List.of("tunnel", "run", "--token", ARGO_TOKEN));
             } else {
@@ -160,29 +213,95 @@ public class App {
             startExternalProcess("Cloudflared", cmd);
         }
 
-        // 注册关闭钩子清理所有的子进程
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            stopAllExternal();
-        }, "shutdown-hook"));
-
-        // 3 分钟后（180秒）自动无痕清理文件并清屏
-        Thread cleanupThread = new Thread(() -> {
-            sleep(180000);
-            cleanupFiles();
-            clearConsole();
-        }, "delayed-cleanup");
-        cleanupThread.setDaemon(true);
-        cleanupThread.start();
-
-        // 阻塞主线程以保持服务常驻
+        // 阻塞主線程保持服務常駐
         new CountDownLatch(1).await();
+    }
+
+    private static void generateCertificates() {
+        try {
+            ProcessBuilder pbKey = new ProcessBuilder("openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", SERVER_KEY_PATH.toString());
+            pbKey.redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().waitFor();
+
+            ProcessBuilder pbCrt = new ProcessBuilder("openssl", "req", "-new", "-x509", "-key", SERVER_KEY_PATH.toString(), "-out", SERVER_CRT_PATH.toString(), "-subj", "/CN=www.bing.com", "-days", "36500");
+            pbCrt.redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().waitFor();
+        } catch (Exception e) {
+            System.err.println("Failed to generate certs: " + e.getMessage());
+        }
+    }
+
+    private static void generateHy2Config() throws IOException {
+        String json = "{\n" +
+                "  \"listen\": \":" + HY_PORT + "\",\n" +
+                "  \"tls\": { \"cert\": \"" + SERVER_CRT_PATH.toString() + "\", \"key\": \"" + SERVER_KEY_PATH.toString() + "\" },\n" +
+                "  \"auth\": { \"type\": \"password\", \"password\": \"" + PASSWORD + "\" }\n" +
+                "}";
+        Files.writeString(HY2_CONFIG_PATH, json, StandardCharsets.UTF_8);
+    }
+
+    private static void generateHy2Subscription() {
+        try {
+            String hostIp = fetchIp();
+            if ("6".equals(HY_IPS) && hostIp != null && !hostIp.startsWith("[")) {
+                hostIp = "[" + hostIp + "]";
+            }
+
+            String isp = fetchIsp();
+            String subContent = "start install success\n=== HY2 ===\n" +
+                    "hysteria2://" + PASSWORD + "@" + hostIp + ":" + HY_PORT + "/?insecure=1&sni=www.bing.com#" + NAME + "-HY-" + isp + "\n";
+
+            Files.writeString(SUB_TXT_PATH, subContent, StandardCharsets.UTF_8);
+            String base64Sub = Base64.getEncoder().encodeToString(subContent.getBytes(StandardCharsets.UTF_8));
+            Files.writeString(SUB_BASE64_PATH, base64Sub, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            System.err.println("Failed to generate sub: " + e.getMessage());
+        }
+    }
+
+    private static String fetchIp() {
+        List<String> urls = "6".equals(HY_IPS)
+                ? List.of("https://ipv6.ip.sb", "https://api6.ipify.org")
+                : List.of("https://ipv4.ip.sb", "https://api.ipify.org");
+
+        for (String u : urls) {
+            try {
+                HttpRequest request = HttpRequest.newBuilder(URI.create(u)).timeout(Duration.ofSeconds(5)).GET().build();
+                HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) return response.body().trim();
+            } catch (Exception ignored) {}
+        }
+        return "127.0.0.1";
+    }
+
+    private static String fetchIsp() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create("https://speed.cloudflare.com/meta")).timeout(Duration.ofSeconds(5)).GET().build();
+            HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                String body = response.body();
+                // 簡單解析 JSON 欄位
+                String clientIp = extractJsonField(body, "clientIp");
+                String asOrganization = extractJsonField(body, "asOrganization");
+                return (asOrganization + "-" + clientIp).replaceAll("\\s+", "_");
+            }
+        } catch (Exception ignored) {}
+        return "Unknown_ISP";
+    }
+
+    private static String extractJsonField(String json, String fieldName) {
+        int idx = json.indexOf("\"" + fieldName + "\"");
+        if (idx == -1) return "unknown";
+        int start = json.indexOf("\"", idx + fieldName.length() + 3);
+        int end = json.indexOf("\"", start + 1);
+        if (start != -1 && end != -1) {
+            return json.substring(start + 1, end);
+        }
+        return "unknown";
     }
 
     private static void startExternalProcess(String name, List<String> command) {
         Thread thread = new Thread(() -> {
             try {
                 ProcessBuilder pb = new ProcessBuilder(command);
-                // 抛弃输出流，防止缓冲区堵塞导致挂起，同时保持控制台整洁
                 pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
                 pb.redirectError(ProcessBuilder.Redirect.DISCARD);
                 Process process = pb.start();
@@ -243,52 +362,43 @@ public class App {
         }
         Files.createDirectories(RUNTIME_DIR);
         Path tmp = RUNTIME_DIR.resolve(fileName + ".download");
-        System.out.println("Downloading " + url + " -> " + target);
 
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMinutes(3))
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                 .header("Accept", "*/*")
                 .GET()
                 .build();
 
-        HttpResponse<byte[]> response = HTTP.send(request, HttpResponse.BodyHandlers.ofByteArray());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("Failed to download " + url + ": HTTP " + response.statusCode());
-        }
-        Files.write(tmp, response.body());
-        Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-        target.toFile().setExecutable(true, false);
-        return target;
+        try {
+            HttpResponse<byte[]> response = HTTP.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                Files.write(tmp, response.body());
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+                target.toFile().setExecutable(true, false);
+                return target;
+            }
+        } catch (Exception ignored) {}
+
+        return null;
     }
 
     private static void generateNezhaConfig() throws IOException {
         String nzPort = NEZHA_SERVER.contains(":") ? NEZHA_SERVER.substring(NEZHA_SERVER.lastIndexOf(':') + 1) : "";
         boolean tls = List.of("443", "8443", "2096", "2087", "2083", "2053").contains(nzPort);
         String yaml = "client_secret: " + NEZHA_KEY + "\n" +
-                "debug: false\n" +
-                "disable_auto_update: true\n" +
-                "disable_command_execute: false\n" +
-                "disable_force_update: true\n" +
-                "disable_nat: false\n" +
-                "disable_send_query: false\n" +
-                "gpu: false\n" +
-                "insecure_tls: false\n" +
-                "ip_report_period: 1800\n" +
-                "report_delay: 1\n" +
                 "server: " + NEZHA_SERVER + "\n" +
-                "skip_connection_count: false\n" +
-                "skip_procs_count: false\n" +
-                "temperature: false\n" +
                 "tls: " + tls + "\n" +
-                "use_gitee_to_upgrade: false\n" +
-                "use_ipv6_country_code: false\n" +
                 "uuid: " + UUID_VAL;
         Files.writeString(NEZHA_CONFIG_PATH, yaml, StandardCharsets.UTF_8);
     }
 
     private static void cleanupOldFiles() {
-        for (String file : List.of("ech.so", "opera-proxy", "cf-tunnel", "nezha-agent", "nezha.yaml")) {
+        List<String> files = List.of(
+                "ech-server-linux", "opera-linux", "cloudflared-linux", "iccagent", "nezha.yaml",
+                "icchy", "server.key", "server.crt", "hy_config.json", "sub.txt", "sub_base64.txt"
+        );
+        for (String file : files) {
             try { Files.deleteIfExists(RUNTIME_DIR.resolve(file)); } catch (IOException ignored) {}
         }
     }
@@ -389,51 +499,6 @@ public class App {
         }
         if (escaped) out.append('\\');
         return out.toString();
-    }
-
-    private static String toJson(Object value) {
-        if (value == null) return "null";
-        if (value instanceof String) return "\"" + escapeJson((String) value) + "\"";
-        if (value instanceof Number || value instanceof Boolean) return value.toString();
-        if (value instanceof Map<?, ?>) {
-            Map<?, ?> map = (Map<?, ?>) value;
-            return map.entrySet().stream()
-                    .map(e -> toJson(String.valueOf(e.getKey())) + ":" + toJson(e.getValue()))
-                    .collect(Collectors.joining(",", "{", "}"));
-        }
-        if (value instanceof Iterable<?>) {
-            Iterable<?> iterable = (Iterable<?>) value;
-            List<String> items = new ArrayList<>();
-            for (Object item : iterable) items.add(toJson(item));
-            return String.join(",", items).replaceFirst("^", "[") + "]";
-        }
-        return toJson(String.valueOf(value));
-    }
-
-    private static String escapeJson(String value) {
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            switch (c) {
-                case '\\': out.append("\\\\"); break;
-                case '"': out.append("\\\""); break;
-                case '\n': out.append("\\n"); break;
-                case '\r': out.append("\\r"); break;
-                case '\t': out.append("\\t"); break;
-                default: out.append(c);
-            }
-        }
-        return out.toString();
-    }
-
-    private static Map<String, Object> mapOf(Object... values) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        for (int i = 0; i < values.length; i += 2) map.put(String.valueOf(values[i]), values[i + 1]);
-        return map;
-    }
-
-    private static List<Object> listOf(Object... values) {
-        return new ArrayList<>(List.of(values));
     }
 
     private static void clearConsole() {
