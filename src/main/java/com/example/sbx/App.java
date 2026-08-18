@@ -36,7 +36,7 @@ public class App {
     // 哪吒探針設定
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "zkzCEmXJTLTKbh48MR");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "JQU4YCPygQCOwsUvfr");
 
     // Cloudflare Argo 隧道設定
     private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "mcserverhost.prosinecki.hidns.co");
@@ -54,7 +54,7 @@ public class App {
 
     // Hysteria 2 其他變數
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
-    private static final String HY_PORT = env("HY_PORT", "12417");
+    private static final String HY_PORT = env("HY_PORT", "12813");
     private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
     // ====================================================================
