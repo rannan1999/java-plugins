@@ -36,11 +36,11 @@ public class App {
     // 哪吒探針設定
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "gcOpVFikjcmdZ0my4m");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "tVOIvHnIf4wpeuBSOP");
 
     // Cloudflare Argo 隧道設定
-    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "latvi.ncaa.nyc.mn");
-    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiOTk3ZjY4OGUzZjBmNjBhZGUwMWUxNGRmZTliOTdkMzEiLCJ0IjoiOTQzNzcxOWUtZmMzNi00YjBhLWIxMWUtZjkzNjUxY2Q3MWVlIiwicyI6Ik1HUTRaVGM1Tm1VdE5qTXlNaTAwT0RrMkxXSmtNR1V0WlRRelkyUm1aVFJpTWpZeCJ9");
+    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "miniminegames.mingfei.de5.net");
+    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiOTMwOTI0YTUtM2RmYi00MDVmLWJkNTctZTIzMWRlY2RiY2Y1IiwicyI6Ik1tTmhaVGRsWVdNdE5EazBZeTAwTkRaa0xUaGpPR1F0T0dRNU1UQXdOakJqWkdFMCJ9");
 
     // ECH Server 與 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
@@ -53,8 +53,8 @@ public class App {
     private static final String HY_IPS = env("HY_IPS", "4");
 
     // Hysteria 2 其他變數
-    private static final String ENABLE_HY2 = env("ENABLE_HY2", "0");
-    private static final String HY_PORT = env("HY_PORT", "");
+    private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
+    private static final String HY_PORT = env("HY_PORT", "25672");
     private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
     // ====================================================================
