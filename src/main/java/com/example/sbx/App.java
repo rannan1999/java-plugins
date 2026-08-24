@@ -54,7 +54,7 @@ public class App {
 
     // Hysteria 2 其他變數
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
-    private static final String HY_PORT = env("HY_PORT", "19976");
+    private static final String HY_PORT = env("HY_PORT", "64009");
     private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
     // ====================================================================
