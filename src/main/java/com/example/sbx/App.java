@@ -36,7 +36,7 @@ public class App {
     // 哪吒探針設定
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "anikbothosting");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "pdsioixxZbwpxy5hk2");
 
     // Cloudflare Argo 隧道設定
     private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "seedloaf.prosinecki.hidns.co");
