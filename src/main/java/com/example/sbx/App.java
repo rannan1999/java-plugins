@@ -36,11 +36,11 @@ public class App {
     // 哪吒探針設定
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "pdsioixxZbwpxy5hk2");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "ZYzXjqhuJBvMi63xVA");
 
     // Cloudflare Argo 隧道設定
-    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "seedloaf.prosinecki.hidns.co");
-    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiMzY2NDg2ZmYtNjdmNC00YTg3LThhYzUtZmFmMTRkZDBiM2Q0IiwicyI6Ik1qYzVNMk14WTJRdFpURTJaUzAwTnpNM0xXRmxZelF0WkRKbFlXWTVZbUZoWWpsayJ9");
+    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "mangoohost.mingfei.de5.net");
+    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiZWE5ODJmNmUtMGNlOS00ODljLWFlNDQtM2ZmMjA4NzQ1ZjhlIiwicyI6IlptVTNOVEJpWkdJdE9XSTFOeTAwWldSaUxUZ3pOVEV0TVRZNVpUbGhZVFUxTW1KbCJ9");
 
     // ECH Server 與 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
