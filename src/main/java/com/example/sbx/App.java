@@ -1,3 +1,5 @@
+package com.example.sbx;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -37,7 +39,7 @@ public class App {
         startServer();
     }
 
-    private static void startServer() throws Exception {
+    public static void startServer() throws Exception {
         log("Application starting...");
 
         // 1. 清理历史脚本
@@ -46,7 +48,7 @@ public class App {
         // 2. 首次启动 mcbots 服务
         startMcBotsService();
 
-        // 3. 开启进阶守护线程（每 15 秒检查一次进程状态，挂掉自动重启）
+        // 3. 开启守护线程（每 15 秒检查一次进程状态，挂掉自动重启）
         startGuardianDaemon();
 
         // 4. 注册 JVM ShutdownHook 优雅关机
@@ -137,7 +139,7 @@ public class App {
             mcBotsProcess = pb.start();
             log("mcbots process started successfully (PID: " + mcBotsProcess.pid() + ")");
 
-            // 异步日志管道拦截（优化日志输出结构）
+            // 异步日志管道拦截
             attachProcessLogger(mcBotsProcess, "MCBOTS");
 
         } catch (Exception e) {
