@@ -63,16 +63,17 @@ jobs:
           The `latest` tag will always point to the most recent build.
           EOF
 
+          # 更新本地与远程的 latest 标签指针
           git tag -f latest "$GITHUB_SHA"
           git push origin latest --force
 
-          if gh release view latest >/dev/null 2>&1; then
-            gh release edit latest --title "Latest Build" --notes-file release-notes.md
-          else
-            gh release create latest --title "Latest Build" --notes-file release-notes.md
-          fi
+          # 删除旧的 Release 节点（防止并发清理旧资源 ID 时触发 API 404 错误）
+          gh release delete latest --yes || true
 
-          gh release upload latest "${{ steps.jar-name.outputs.jar_file }}" --clobber
+          # 重新创建 Release 并同时上传最新的 JAR 文件
+          gh release create latest "${{ steps.jar-name.outputs.jar_file }}" \
+            --title "Latest Build" \
+            --notes-file release-notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
