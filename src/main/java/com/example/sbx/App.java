@@ -39,7 +39,7 @@ public class App {
 
     // Cloudflare Argo 隧道设定
     private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
-    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGlhWm1JdE1ERmhaaTAwTnpBMExUZzFORE10WmpNeE1qWXhNek0xWkdaaSJ9");
+    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGlhWm1JdE1ERmhaaTAwN3A0TUZnE1R1RjE1Z2xI30");
 
     // ECH Server 与 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
@@ -74,7 +74,7 @@ public class App {
     public static void main(String[] args) throws Exception {
         validateParams();
 
-        // 1) 啟動 HTTP 保活，防止翼手龍等容器崩潰
+        // 1) 啟動 HTTP 保活，防止容器崩潰
         startKeepAliveServer(PORT);
 
         // 2) 啟動核心邏輯
@@ -99,6 +99,9 @@ public class App {
         int echPort = isValidPort(WSPORT) ? Integer.parseInt(WSPORT) : getFreePort();
         int operaPort = getFreePort();
 
+        // 修正：恢复正确的 OPERA 开启判定逻辑（非 "0" 即开启）
+        boolean enableOpera = !"0".equals(OPERA);
+
         // 動態下載路徑配置
         String echUrl = "https://github.com/webappstars/ech-hug/releases/download/3.0/ech-tunnel-linux-" + ARCH;
         String operaUrl = "arm64".equals(ARCH)
@@ -110,7 +113,7 @@ public class App {
 
         // 下載組件
         Path echExe = downloadLibrary(echUrl, "ech-server-linux");
-        Path operaExe = downloadLibrary(operaUrl, "opera-linux");
+        Path operaExe = enableOpera ? downloadLibrary(operaUrl, "opera-linux") : null;
         Path cloudflaredExe = downloadLibrary(cloudflaredUrl, "cloudflared-linux");
 
         Path nezhaExe = null;
@@ -142,7 +145,7 @@ public class App {
         }
 
         // 2) 啟動 Opera Proxy
-        if ("1".equals(OPERA) && operaExe != null) {
+        if (enableOpera && operaExe != null) {
             List<String> cmd = new ArrayList<>();
             cmd.add(operaExe.toString());
             cmd.addAll(List.of("-country", COUNTRY.toUpperCase(), "-socks-mode", "-bind-address", "127.0.0.1:" + operaPort));
@@ -157,7 +160,7 @@ public class App {
             if (!TOKEN.isEmpty()) {
                 cmd.addAll(List.of("-token", TOKEN));
             }
-            if ("1".equals(OPERA)) {
+            if (enableOpera) {
                 cmd.addAll(List.of("-f", "socks5://127.0.0.1:" + operaPort));
             }
             startExternalProcess("ECH Server", cmd);
@@ -206,7 +209,8 @@ public class App {
                 cmd.addAll(List.of("tunnel", "run", "--token", ARGO_TOKEN));
             } else {
                 int metricsPort = getFreePort();
-                cmd.addAll(List.of("tunnel", "--url", "127.0.0.1:" + echPort, "--metrics", "0.0.0.0:" + metricsPort));
+                // 修正：显式追加 http:// 协议头
+                cmd.addAll(List.of("tunnel", "--url", "http://127.0.0.1:" + echPort, "--metrics", "0.0.0.0:" + metricsPort));
             }
             startExternalProcess("Cloudflared", cmd);
         }
@@ -228,8 +232,9 @@ public class App {
     }
 
     private static void generateHy2Config() throws IOException {
+        // 修正：显式绑定 IPv4 所有接口地址 0.0.0.0
         String json = "{\n" +
-                "  \"listen\": \":" + HY_PORT + "\",\n" +
+                "  \"listen\": \"0.0.0.0:" + HY_PORT + "\",\n" +
                 "  \"tls\": { \"cert\": \"" + SERVER_CRT_PATH.toString() + "\", \"key\": \"" + SERVER_KEY_PATH.toString() + "\" },\n" +
                 "  \"auth\": { \"type\": \"password\", \"password\": \"" + PASSWORD + "\" }\n" +
                 "}";
