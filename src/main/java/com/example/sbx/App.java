@@ -38,8 +38,8 @@ public class App {
     private static final String NEZHA_KEY = env("NEZHA_KEY", "zkzCEmXJTLTKbh48MR");
 
     // Cloudflare Argo 隧道设定
-    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
-    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGlhWm1JdE1ERmhaaTAwN3A0TUZnE1R1RjE1Z2xI30");
+    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "testech.mu2023.eu.org");
+    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
 
     // ECH Server 与 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
