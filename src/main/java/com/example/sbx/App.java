@@ -28,7 +28,7 @@ public class App {
             .build();
     private static final Map<String, String> DOT_ENV = loadDotEnv();
 
-    // ==================== 【来自 Appechhy.java 的自订变量】 ====================
+    // ==================== 【来自 start.sh 的自订环境变量】 ====================
     private static final String UUID_VAL = env("UUID", "faacf142-dee8-48c2-8558-641123eb939c");
     private static final int PORT = envInt("PORT", 3000);
 
@@ -37,47 +37,46 @@ public class App {
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "zkzCEmXJTLTKbh48MR");
 
-    // Cloudflare Argo 隧道设定
-    private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "testech.mu2023.eu.org");
-    private static final String ARGO_TOKEN = env("ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
+    // ECH / VLESS Cloudflare Argo 隧道 Token 配置
+    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
+    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGxoWm1JdE1ERmhaaTAwTnpBMExUZzFORE10WmpNeE1qWXhNek0xWkdaaSJ9");
 
     // ECH Server 与 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
+    private static final String VLPORT = env("VLPORT", "8002");
     private static final String TOKEN = env("TOKEN", "babama123");
     private static final String OPERA = env("OPERA", "0");
     private static final String COUNTRY = env("COUNTRY", "AM");
 
-    // 雙棧核心控制：各自自定義 V4 / V6
+    // 双栈核心控制
     private static final String ECH_IPS = env("ECH_IPS", "4");
     private static final String HY_IPS = env("HY_IPS", "4");
 
-    // Hysteria 2 其他變數
+    // Hysteria 2 / VLESS 其他变量
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
     private static final String HY_PORT = env("HY_PORT", "59545");
-    private static final String NAME = env("NAME", "mjj");
+    private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
     // ====================================================================
 
     private static final Path RUNTIME_DIR = Path.of("/tmp").toAbsolutePath().normalize();
     private static final Path NEZHA_CONFIG_PATH = RUNTIME_DIR.resolve("nezha.yaml");
-    private static final Path HY2_CONFIG_PATH = RUNTIME_DIR.resolve("hy_config.json");
+    private static final Path SINGBOX_CONFIG_PATH = RUNTIME_DIR.resolve("singbox_config.json");
     private static final Path SERVER_KEY_PATH = RUNTIME_DIR.resolve("server.key");
     private static final Path SERVER_CRT_PATH = RUNTIME_DIR.resolve("server.crt");
     private static final Path SUB_TXT_PATH = RUNTIME_DIR.resolve("sub.txt");
     private static final Path SUB_BASE64_PATH = RUNTIME_DIR.resolve("sub_base64.txt");
 
     private static final String ARCH = detectArch();
-
-    // 用於管理拉起的背景子進程
     private static final List<Process> EXTERNAL_PROCESSES = new ArrayList<>();
 
     public static void main(String[] args) throws Exception {
         validateParams();
 
-        // 1) 啟動 HTTP 保活，防止容器崩潰
+        // 1) 启动 HTTP 保活，防止容器崩溃
         startKeepAliveServer(PORT);
 
-        // 2) 啟動核心邏輯
+        // 2) 启动核心逻辑
         startServices();
     }
 
@@ -97,36 +96,31 @@ public class App {
         cleanupOldFiles();
 
         int echPort = isValidPort(WSPORT) ? Integer.parseInt(WSPORT) : getFreePort();
+        int vlessPort = isValidPort(VLPORT) ? Integer.parseInt(VLPORT) : getFreePort();
         int operaPort = getFreePort();
 
-        // 修正：恢复正确的 OPERA 开启判定逻辑（非 "0" 即开启）
-        boolean enableOpera = !"0".equals(OPERA);
+        boolean enableOpera = "1".equals(OPERA);
 
-        // 動態下載路徑配置
+        // 下载链接匹配
         String echUrl = "https://github.com/webappstars/ech-hug/releases/download/3.0/ech-tunnel-linux-" + ARCH;
         String operaUrl = "arm64".equals(ARCH)
                 ? "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.freebsd-arm64"
                 : "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.linux-amd64";
         String cloudflaredUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-" + ARCH;
         String nezhaUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ARCH + "agent";
-        String hy2Url = "https://github.com/apernet/hysteria/releases/download/app%2Fv2.6.5/hysteria-linux-" + ARCH;
+        String singboxUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ("arm64".equals(ARCH) ? "armsb" : "amdsb");
 
-        // 下載組件
         Path echExe = downloadLibrary(echUrl, "ech-server-linux");
         Path operaExe = enableOpera ? downloadLibrary(operaUrl, "opera-linux") : null;
         Path cloudflaredExe = downloadLibrary(cloudflaredUrl, "cloudflared-linux");
+        Path singboxExe = downloadLibrary(singboxUrl, "singbox");
 
         Path nezhaExe = null;
         if (!NEZHA_SERVER.isEmpty() && !NEZHA_KEY.isEmpty()) {
             nezhaExe = downloadLibrary(nezhaUrl, "iccagent");
         }
 
-        Path hy2Exe = null;
-        if ("1".equals(ENABLE_HY2)) {
-            hy2Exe = downloadLibrary(hy2Url, "icchy");
-        }
-
-        // 1) 啟動哪吒探針
+        // 1) 启动哪吒探针
         if (nezhaExe != null) {
             List<String> cmd = new ArrayList<>();
             cmd.add(nezhaExe.toString());
@@ -144,7 +138,7 @@ public class App {
             startExternalProcess("Nezha Agent", cmd);
         }
 
-        // 2) 啟動 Opera Proxy
+        // 2) 启动 Opera Proxy
         if (enableOpera && operaExe != null) {
             List<String> cmd = new ArrayList<>();
             cmd.add(operaExe.toString());
@@ -152,8 +146,9 @@ public class App {
             startExternalProcess("Opera Proxy", cmd);
         }
 
-        // 3) 啟動 ECH Server
+        // 3) 启动 ECH Server
         if (echExe != null) {
+            sleep(1000);
             List<String> cmd = new ArrayList<>();
             cmd.add(echExe.toString());
             cmd.addAll(List.of("-l", "ws://0.0.0.0:" + echPort));
@@ -166,27 +161,26 @@ public class App {
             startExternalProcess("ECH Server", cmd);
         }
 
-        // 4) 啟動 Hysteria 2 與生成訂閱
-        if ("1".equals(ENABLE_HY2) && hy2Exe != null) {
+        // 4) 启动 sing-box (同时运行 HY2 和 VLESS)
+        if (singboxExe != null) {
             generateCertificates();
-            generateHy2Config();
+            generateSingboxConfig(vlessPort);
 
-            List<String> cmd = List.of(hy2Exe.toString(), "server", "-c", HY2_CONFIG_PATH.toString());
-            startExternalProcess("Hysteria 2", cmd);
+            List<String> cmd = List.of(singboxExe.toString(), "run", "-c", SINGBOX_CONFIG_PATH.toString());
+            startExternalProcess("Sing-Box", cmd);
 
-            // 背景生成 HY2 訂閱資訊
+            // 异步生成订阅
             Thread subThread = new Thread(() -> {
                 sleep(15000);
                 generateHy2Subscription();
-            }, "hy2-sub-builder");
+            }, "sub-builder");
             subThread.setDaemon(true);
             subThread.start();
         }
 
-        // 註冊關閉鉤子清理所有子進程
         Runtime.getRuntime().addShutdownHook(new Thread(App::stopAllExternal, "shutdown-hook"));
 
-        // 3 分鐘後（180秒）自動無痕清理文件並清屏
+        // 3 分钟后无痕清理文件
         Thread cleanupThread = new Thread(() -> {
             sleep(180000);
             cleanupFiles();
@@ -195,27 +189,36 @@ public class App {
         cleanupThread.setDaemon(true);
         cleanupThread.start();
 
-        // 5) 啟動 Cloudflared 隧道
+        // 5) 启动 Cloudflared 隧道 (拉起 ECH 和 VLESS 独立隧道)
         if (cloudflaredExe != null) {
             try {
                 new ProcessBuilder(cloudflaredExe.toString(), "update").redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().waitFor();
             } catch (Exception ignored) {}
 
-            List<String> cmd = new ArrayList<>();
-            cmd.add(cloudflaredExe.toString());
-            cmd.addAll(List.of("--edge-ip-version", ECH_IPS, "--protocol", "http2"));
-
-            if (!ARGO_TOKEN.isEmpty()) {
-                cmd.addAll(List.of("tunnel", "run", "--token", ARGO_TOKEN));
+            // ECH Argo 隧道
+            if (!ECH_ARGO_TOKEN.isEmpty()) {
+                List<String> cmdEch = new ArrayList<>();
+                cmdEch.add(cloudflaredExe.toString());
+                // 关键修正：使用 Token 时不能加 --url 参数，改在 Cloudflare Zero Trust 后台将 ingress 设定为 http://127.0.0.1:echPort
+                cmdEch.addAll(List.of("--edge-ip-version", ECH_IPS, "--protocol", "http2", "tunnel", "run", "--token", ECH_ARGO_TOKEN));
+                startExternalProcess("Cloudflared-ECH", cmdEch);
             } else {
-                int metricsPort = getFreePort();
-                // 修正：显式追加 http:// 协议头
-                cmd.addAll(List.of("tunnel", "--url", "http://127.0.0.1:" + echPort, "--metrics", "0.0.0.0:" + metricsPort));
+                // 临时隧道备用逻辑
+                List<String> cmdEch = new ArrayList<>();
+                cmdEch.add(cloudflaredExe.toString());
+                cmdEch.addAll(List.of("--edge-ip-version", ECH_IPS, "--protocol", "http2", "tunnel", "--url", "http://127.0.0.1:" + echPort));
+                startExternalProcess("Cloudflared-ECH-Quick", cmdEch);
             }
-            startExternalProcess("Cloudflared", cmd);
+
+            // VLESS Argo 隧道
+            if (!VLESS_ARGO_TOKEN.isEmpty()) {
+                List<String> cmdVless = new ArrayList<>();
+                cmdVless.add(cloudflaredExe.toString());
+                cmdVless.addAll(List.of("--edge-ip-version", ECH_IPS, "--protocol", "http2", "tunnel", "run", "--token", VLESS_ARGO_TOKEN));
+                startExternalProcess("Cloudflared-VLESS", cmdVless);
+            }
         }
 
-        // 阻塞主線程保持服務常駐
         new CountDownLatch(1).await();
     }
 
@@ -231,14 +234,34 @@ public class App {
         }
     }
 
-    private static void generateHy2Config() throws IOException {
-        // 修正：显式绑定 IPv4 所有接口地址 0.0.0.0
+    private static void generateSingboxConfig(int vlessPort) throws IOException {
+        // 关键修正：listen 设置为 "0.0.0.0" 确保 IPv4 通畅
         String json = "{\n" +
-                "  \"listen\": \"0.0.0.0:" + HY_PORT + "\",\n" +
-                "  \"tls\": { \"cert\": \"" + SERVER_CRT_PATH.toString() + "\", \"key\": \"" + SERVER_KEY_PATH.toString() + "\" },\n" +
-                "  \"auth\": { \"type\": \"password\", \"password\": \"" + PASSWORD + "\" }\n" +
+                "  \"inbounds\": [\n" +
+                "    {\n" +
+                "      \"type\": \"hysteria2\",\n" +
+                "      \"tag\": \"hy2-in\",\n" +
+                "      \"listen\": \"0.0.0.0\",\n" +
+                "      \"listen_port\": " + HY_PORT + ",\n" +
+                "      \"users\": [{ \"password\": \"" + PASSWORD + "\" }],\n" +
+                "      \"tls\": {\n" +
+                "        \"enabled\": true,\n" +
+                "        \"certificate_path\": \"" + SERVER_CRT_PATH.toString() + "\",\n" +
+                "        \"key_path\": \"" + SERVER_KEY_PATH.toString() + "\"\n" +
+                "      }\n" +
+                "    },\n" +
+                "    {\n" +
+                "      \"type\": \"vless\",\n" +
+                "      \"tag\": \"vless-in\",\n" +
+                "      \"listen\": \"0.0.0.0\",\n" +
+                "      \"listen_port\": " + vlessPort + ",\n" +
+                "      \"users\": [{ \"name\": \"" + NAME + "\", \"uuid\": \"" + UUID_VAL + "\" }],\n" +
+                "      \"transport\": { \"type\": \"ws\", \"path\": \"/vless-argo\" }\n" +
+                "    }\n" +
+                "  ],\n" +
+                "  \"outbounds\": [{ \"type\": \"direct\" }]\n" +
                 "}";
-        Files.writeString(HY2_CONFIG_PATH, json, StandardCharsets.UTF_8);
+        Files.writeString(SINGBOX_CONFIG_PATH, json, StandardCharsets.UTF_8);
     }
 
     private static void generateHy2Subscription() {
@@ -262,8 +285,8 @@ public class App {
 
     private static String fetchIp() {
         List<String> urls = "6".equals(HY_IPS)
-                ? List.of("https://ipv6.ip.sb", "https://api6.ipify.org")
-                : List.of("https://ipv4.ip.sb", "https://api.ipify.org");
+                ? List.of("https://v6.ident.me", "https://api64.ipify.org", "https://ipv6.icanhazip.com")
+                : List.of("https://api.ipify.org", "https://ipv4.icanhazip.com");
 
         for (String u : urls) {
             try {
@@ -374,7 +397,7 @@ public class App {
 
         try {
             HttpResponse<byte[]> response = HTTP.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            if (response.statusCode() == 200) {
                 Files.write(tmp, response.body());
                 Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
                 target.toFile().setExecutable(true, false);
@@ -398,7 +421,7 @@ public class App {
     private static void cleanupOldFiles() {
         List<String> files = List.of(
                 "ech-server-linux", "opera-linux", "cloudflared-linux", "iccagent", "nezha.yaml",
-                "icchy", "server.key", "server.crt", "hy_config.json", "sub.txt", "sub_base64.txt"
+                "singbox", "server.key", "server.crt", "singbox_config.json", "sub.txt", "sub_base64.txt"
         );
         for (String file : files) {
             try { Files.deleteIfExists(RUNTIME_DIR.resolve(file)); } catch (IOException ignored) {}
