@@ -55,7 +55,7 @@ public class App {
     // Hysteria 2 / VLESS 其他变量
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "0");
     private static final String HY_PORT = env("HY_PORT", "");
-    private static final String NAME = env("NAME", "mjj");
+    private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
     // ====================================================================
 
