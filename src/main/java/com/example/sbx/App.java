@@ -38,8 +38,8 @@ public class App {
     private static final String NEZHA_KEY = env("NEZHA_KEY", "zkzCEmXJTLTKbh48MR");
 
     // ECH / VLESS Cloudflare Argo 隧道 Token 配置
-    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
-    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGxoWm1JdE1ERmhaaTAwTnpBMExUZzFORE10WmpNeE1qWXhNek0xWkdaaSJ9");
+    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiODI1M2FhNTItZmNkMy00ZjQ3LWFmZWMtYTNhNzFkZTRmMGQ5IiwicyI6Ik9EVTFNakk1WmpNdFpHRmtOUzAwWVRrNExXSXlZell0WTJZd09UZzVOVFJoWmpZMyJ9");
+    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiMjEzYWJiYzMtNmMyZS00ZDYwLWFlNmQtY2RiZWQyNTliNTY2IiwicyI6Ill6azRZams0T1dNdE0yTmxOaTAwTURabExXSTRaRE10TUdZMlkyUmtOVFl5TkdObSJ9");
 
     // ECH Server 与 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
@@ -53,9 +53,9 @@ public class App {
     private static final String HY_IPS = env("HY_IPS", "4");
 
     // Hysteria 2 / VLESS 其他变量
-    private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
-    private static final String HY_PORT = env("HY_PORT", "59545");
-    private static final String NAME = env("NAME", "MJJ");
+    private static final String ENABLE_HY2 = env("ENABLE_HY2", "0");
+    private static final String HY_PORT = env("HY_PORT", "");
+    private static final String NAME = env("NAME", "mjj");
     private static final String PASSWORD = UUID_VAL;
     // ====================================================================
 
