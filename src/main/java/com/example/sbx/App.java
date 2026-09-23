@@ -369,7 +369,7 @@ public class App {
 
         try {
             HttpResponse<byte[]> response = HTTP.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() >= 200 && response.statusCode < 300) {
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 Files.write(tmp, response.body());
                 Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
                 target.toFile().setExecutable(true, false);
