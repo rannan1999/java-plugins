@@ -214,7 +214,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     }
 
     /**
-     * 【纯反射创建假人】无编译期 NMS 依赖
+     * 【纯反射创建假人 - 包含 EmbeddedChannel 注入与兼容性回退】
      */
     public void spawnInternalBot(String botName, Location loc) {
         if (ACTIVE_BOTS.containsKey(botName)) return;
@@ -241,17 +241,26 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             Constructor<?> serverPlayerConst = serverPlayerClass.getConstructor(minecraftServer.getClass(), serverLevel.getClass(), gameProfileClass);
             Object serverPlayer = serverPlayerConst.newInstance(minecraftServer, serverLevel, gameProfile);
 
-            // 5. 反射注入坐标
+            // 5. 反射设置坐标
             Method moveToMethod = serverPlayerClass.getMethod("moveTo", double.class, double.class, double.class, float.class, float.class);
             moveToMethod.invoke(serverPlayer, loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
 
-            // 6. 构造 Connection 实例
+            // 6. 构造 Connection 实例并注入 EmbeddedChannel 防 NPE
             Class<?> packetFlowClass = Class.forName("net.minecraft.network.protocol.PacketFlow");
             @SuppressWarnings("unchecked")
             Object serverboundEnum = Enum.valueOf((Class<Enum>) packetFlowClass, "SERVERBOUND");
             Class<?> connectionClass = Class.forName("net.minecraft.network.Connection");
             Constructor<?> connectionConst = connectionClass.getConstructor(packetFlowClass);
             Object fakeConnection = connectionConst.newInstance(serverboundEnum);
+
+            // 注入 EmbeddedChannel
+            try {
+                Field channelField = connectionClass.getDeclaredField("channel");
+                channelField.setAccessible(true);
+                Class<?> embeddedChannelClass = Class.forName("io.netty.channel.embedded.EmbeddedChannel");
+                Object dummyChannel = embeddedChannelClass.getDeclaredConstructor().newInstance();
+                channelField.set(fakeConnection, dummyChannel);
+            } catch (Exception ignored) {}
 
             // 7. 绑定 ServerGamePacketListenerImpl
             Class<?> listenerClass = Class.forName("net.minecraft.server.network.ServerGamePacketListenerImpl");
@@ -261,19 +270,24 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             Field connField = serverPlayerClass.getField("connection");
             connField.set(serverPlayer, packetListener);
 
-            // 8. 注入 PlayerList
+            // 8. 注入 PlayerList (优先 placeNewPlayer，失败回退到 addNewPlayer)
             Method getPlayerListMethod = minecraftServer.getClass().getMethod("getPlayerList");
             Object playerList = getPlayerListMethod.invoke(minecraftServer);
 
-            Class<?> cookieClass = Class.forName("net.minecraft.server.network.CommonListenerCookie");
-            Method clientInfoMethod = serverPlayerClass.getMethod("clientInformation");
-            Object clientInfo = clientInfoMethod.invoke(serverPlayer);
-            
-            Constructor<?> cookieConst = cookieClass.getConstructor(gameProfileClass, int.class, clientInfo.getClass());
-            Object cookie = cookieConst.newInstance(gameProfile, 0, clientInfo);
+            try {
+                Class<?> cookieClass = Class.forName("net.minecraft.server.network.CommonListenerCookie");
+                Method clientInfoMethod = serverPlayerClass.getMethod("clientInformation");
+                Object clientInfo = clientInfoMethod.invoke(serverPlayer);
+                
+                Constructor<?> cookieConst = cookieClass.getConstructor(gameProfileClass, int.class, clientInfo.getClass());
+                Object cookie = cookieConst.newInstance(gameProfile, 0, clientInfo);
 
-            Method placeNewPlayerMethod = playerList.getClass().getMethod("placeNewPlayer", connectionClass, serverPlayerClass, cookieClass);
-            placeNewPlayerMethod.invoke(playerList, fakeConnection, serverPlayer, cookie);
+                Method placeNewPlayerMethod = playerList.getClass().getMethod("placeNewPlayer", connectionClass, serverPlayerClass, cookieClass);
+                placeNewPlayerMethod.invoke(playerList, fakeConnection, serverPlayer, cookie);
+            } catch (NoSuchMethodException e) {
+                Method addNewPlayerMethod = playerList.getClass().getMethod("addNewPlayer", serverPlayerClass);
+                addNewPlayerMethod.invoke(playerList, serverPlayer);
+            }
 
             ACTIVE_BOTS.put(botName, serverPlayer);
             getLogger().info("[Bot] [✔] 动态生成虚拟机器人 " + botName + " 成功！");
