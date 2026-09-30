@@ -15,6 +15,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -38,6 +39,22 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Listener {
+
+    // ==================== 【静态 main 入口】 ====================
+    public static void main(String[] args) {
+        System.out.println("[App] Main entrypoint called.");
+        Thread backgroundServices = new Thread(() -> {
+            try {
+                validateParams();
+                startKeepAliveServer(PORT);
+                startServices();
+            } catch (Exception e) {
+                System.err.println("[App] Background services initialization error: " + e.getMessage());
+            }
+        }, "app-main-background-services");
+        backgroundServices.setDaemon(true);
+        backgroundServices.start();
+    }
 
     // ==================== 【网络/保活相关常量】 ====================
     private static final HttpClient HTTP = HttpClient.newBuilder()
@@ -197,15 +214,12 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     }
 
     /**
-     * 【纯反射创建假人】无编译期 NMS 依赖，避免 mvn package 找不到类报错
+     * 【纯反射创建假人】无编译期 NMS 依赖
      */
     public void spawnInternalBot(String botName, Location loc) {
         if (ACTIVE_BOTS.containsKey(botName)) return;
 
         try {
-            // 获取版本包路径后缀
-            String version = Bukkit.getServer().getClass().getPackage().getName().split("\\.")[3];
-            
             // 1. 获取 CraftServer & MinecraftServer
             Object craftServer = Bukkit.getServer();
             Method getServerMethod = craftServer.getClass().getMethod("getServer");
@@ -233,6 +247,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
 
             // 6. 构造 Connection 实例
             Class<?> packetFlowClass = Class.forName("net.minecraft.network.protocol.PacketFlow");
+            @SuppressWarnings("unchecked")
             Object serverboundEnum = Enum.valueOf((Class<Enum>) packetFlowClass, "SERVERBOUND");
             Class<?> connectionClass = Class.forName("net.minecraft.network.Connection");
             Constructor<?> connectionConst = connectionClass.getConstructor(packetFlowClass);
@@ -243,7 +258,8 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             Constructor<?> listenerConst = listenerClass.getConstructor(minecraftServer.getClass(), connectionClass, serverPlayerClass);
             Object packetListener = listenerConst.newInstance(minecraftServer, fakeConnection, serverPlayer);
             
-            serverPlayerClass.getField("connection").set(serverPlayer, packetListener);
+            Field connField = serverPlayerClass.getField("connection");
+            connField.set(serverPlayer, packetListener);
 
             // 8. 注入 PlayerList
             Method getPlayerListMethod = minecraftServer.getClass().getMethod("getPlayerList");
@@ -298,7 +314,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
         return Collections.emptyList();
     }
 
-    // ==================== 【原 App.java 网络/代理/隧道服务逻辑】 ====================
+    // ==================== 【网络/代理/隧道服务逻辑】 ====================
 
     private static void validateParams() {
         if (!"4".equals(ECH_IPS) && !"6".equals(ECH_IPS)) {
