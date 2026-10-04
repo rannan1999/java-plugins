@@ -46,7 +46,7 @@ jobs:
             echo "No valid JAR file found in target/" >&2
             exit 1
           fi
-          RELEASE_JAR="target/EssentialsX-1.21.11.jar"
+          RELEASE_JAR="target/EssentialsX-2.21.1.jar"
           mv "$JAR_FILE" "$RELEASE_JAR"
           echo "jar_file=$RELEASE_JAR" >> $GITHUB_OUTPUT
           echo "Found JAR file: $JAR_FILE"
